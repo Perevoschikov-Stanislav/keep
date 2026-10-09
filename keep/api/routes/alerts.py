@@ -434,6 +434,11 @@ def assign_alert(
         assignees_last_receievd = enrichment.enrichments.get("assignees", {})
         status = enrichment.enrichments.get("status")
     if unassign:
+        if (
+            authenticated_entity.role == "noc"
+            and assignees_last_receievd.get(last_received) != user_email.lower()
+        ):
+            raise HTTPException(status_code=403, detail="Can only unassign yourself")
         assignees_last_receievd.pop(last_received, None)
     else:
         assignees_last_receievd[last_received] = user_email.lower()

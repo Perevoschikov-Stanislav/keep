@@ -524,7 +524,15 @@ class IncidentBl:
             end_time = datetime.now(tz=timezone.utc)
             incident.end_time = end_time
 
-        if incident.assignee != change_by.email:
+        # Ticket 05c:
+        # Assignee changes only on explicit assignment or when taking an incident (ACKNOWLEDGED).
+        # Resolve (including automated auto-resolve by rule) or other status transitions must NOT overwrite assignee.
+        if (
+            new_status == IncidentStatus.ACKNOWLEDGED
+            and change_by.email
+            and change_by.email != "system"
+            and incident.assignee != change_by.email
+        ):
             incident.assignee = change_by.email
             add_audit(
                 self.tenant_id,

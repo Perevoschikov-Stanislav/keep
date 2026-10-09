@@ -55,6 +55,7 @@ from keep.api.core.db_utils import (
     get_or_create,
 )
 from keep.api.core.dependencies import SINGLE_TENANT_UUID
+from keep.api.utils.alert_utils import extract_service_from_alert
 
 # This import is required to create the tables
 from keep.api.models.action_type import ActionType
@@ -4329,7 +4330,7 @@ def get_alerts_data_for_incident(
     with existed_or_new_session(session) as session:
 
         fields = (
-            get_json_extract_field(session, Alert.event, "service"),
+            Alert.event,
             Alert.provider_type,
             Alert.fingerprint,
             get_json_extract_field(session, Alert.event, "severity"),
@@ -4355,11 +4356,13 @@ def get_alerts_data_for_incident(
         services = []
         severities = []
 
-        for service, source, fingerprint, severity in alerts_data:
+        for alert_event, source, fingerprint, severity in alerts_data:
             if source:
                 sources.append(source)
-            if service:
-                services.append(service)
+            if alert_event:
+                resolved_service = extract_service_from_alert(alert_event)
+                if resolved_service:
+                    services.append(resolved_service)
             if severity:
                 if isinstance(severity, int):
                     severities.append(IncidentSeverity.from_number(severity))
@@ -4651,12 +4654,10 @@ def remove_alerts_to_incident_by_incident_id(
             tenant_id, fingerprints, session=session
         )
 
-        service_field = get_json_extract_field(session, Alert.event, "service")
-
         # checking if services of removed alerts are still presented in alerts
         # which still assigned with the incident
-        existed_services_query = (
-            select(func.distinct(service_field))
+        remaining_alerts_query = (
+            select(Alert.event)
             .select_from(LastAlert)
             .join(
                 LastAlertToIncident,
@@ -4669,10 +4670,14 @@ def remove_alerts_to_incident_by_incident_id(
             .filter(
                 LastAlertToIncident.deleted_at == NULL_FOR_DELETED_AT,
                 LastAlertToIncident.incident_id == incident_id,
-                service_field.in_(alerts_data_for_incident["services"]),
             )
         )
-        services_existed = session.exec(existed_services_query)
+        remaining_events = session.exec(remaining_alerts_query).all()
+        services_existed = {
+            svc
+            for ev in remaining_events
+            if (svc := extract_service_from_alert(ev))
+        }
 
         # checking if sources (providers) of removed alerts are still presented in alerts
         # which still assigned with the incident
