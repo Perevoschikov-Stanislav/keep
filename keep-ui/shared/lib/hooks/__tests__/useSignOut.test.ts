@@ -57,7 +57,7 @@ describe("useSignOut", () => {
     expect(locationHref).toBe("");
   });
 
-  it("should redirect to /oauth2/sign_out for OAUTH2PROXY auth type", () => {
+  it("clears the Keep session and redirects to proxy sign out with a login destination", async () => {
     (useConfig as jest.Mock).mockReturnValue({
       data: {
         AUTH_TYPE: AuthType.OAUTH2PROXY,
@@ -68,12 +68,30 @@ describe("useSignOut", () => {
 
     const { result } = renderHook(() => useSignOut());
 
-    act(() => {
-      result.current();
+    await act(async () => {
+      await result.current();
     });
 
-    expect(locationHref).toBe("/oauth2/sign_out");
-    expect(signOut).not.toHaveBeenCalled();
+    expect(locationHref).toBe("/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%2F");
+    expect(signOut).toHaveBeenCalledWith({ redirect: false });
+  });
+
+  it("waits for the Keep session to be cleared before leaving for proxy sign out", async () => {
+    (useConfig as jest.Mock).mockReturnValue({
+      data: { AUTH_TYPE: AuthType.OAUTH2PROXY },
+    });
+    let completeSignOut!: () => void;
+    jest.mocked(signOut).mockImplementationOnce(() => new Promise((resolve) => {
+      completeSignOut = () => resolve({ url: "/" });
+    }));
+    const { result } = renderHook(() => useSignOut());
+    await act(async () => {
+      const completion = result.current();
+      expect(locationHref).toBe("");
+      completeSignOut();
+      await completion;
+    });
+    expect(locationHref).toBe("/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%2F");
   });
 
   it("should call NextAuth signOut for DB auth type", () => {
@@ -192,4 +210,3 @@ describe("useSignOut", () => {
     expect(posthog.reset).toHaveBeenCalled();
   });
 });
-

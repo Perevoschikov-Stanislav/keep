@@ -12,6 +12,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 from keep.api.models.alert import AlertDto, AlertSeverity, AlertStatus
+from keep.api.utils.alert_utils import extract_service_from_alert
 from keep.contextmanager.contextmanager import ContextManager
 from keep.providers.base.base_provider import BaseProvider, ProviderHealthMixin
 from keep.providers.models.provider_config import ProviderConfig, ProviderScope
@@ -198,7 +199,8 @@ receivers:
             annotations = {
                 k.lower(): v for k, v in alert.pop("annotations", {}).items()
             }
-            service = labels.get("service", annotations.get("service", None))
+            raw_alert_data = {**alert, "labels": labels, "annotations": annotations}
+            service = extract_service_from_alert(raw_alert_data)
             # map severity and status to keep's format
             status = alert.pop("state", None) or alert.pop("status", None)
             status = PrometheusProvider.STATUS_MAP.get(status, AlertStatus.FIRING)

@@ -1,0 +1,69 @@
+gitops:
+  enabled: false
+keepMm:
+  replicas: 0
+incidentCore:
+  enabled: true
+keep:
+  backend:
+    image:
+      repository: registry.example.org/keepfork/keep-api
+      tag: REPLACE_WITH_PUBLISHED_TAG
+      pullPolicy: IfNotPresent
+    envRender:
+      KEEP_INCIDENT_POLICIES_CONFIG_FILE: /configuration/incident-core/bundle.yaml
+      KEEP_TEAMS_CONFIG_FILE: /configuration/incident-core/teams.yaml
+      PROVISION_RESOURCES: 'false'
+      KEEP_MAINTENANCE_DESTRUCTIVE_DROP: 'false'
+      KEEP_OAUTH2_PROXY_RESPONDER_ROLES: /keep-ops-l1,/keep-ops-l2,/keep-it
+      KEEP_OAUTH2_PROXY_VIEWER_ROLES: /keep-viewer,/keep-scanner
+      KEEP_ALERTMANAGER_RECONCILER_ENABLED: 'false'
+      KEEP_ALERTMANAGER_TEAM_MATCHERS: '{}'
+      TMPDIR: /state
+      TMP: /state
+      TEMP: /state
+    podAnnotations:
+      keep.example.org/policy-revision: core-target-20261008
+    extraVolumeMounts:
+    - name: incident-core
+      mountPath: /configuration/incident-core
+      readOnly: true
+    extraVolumes:
+    - name: incident-core
+      configMap:
+        name: keep-incident-core
+        items:
+        - key: bundle.yaml
+          path: bundle.yaml
+        - key: teams.yaml
+          path: teams.yaml
+        - key: mappings__families.yaml
+          path: mappings/families.yaml
+        - key: mappings__zone-hosts.yaml
+          path: mappings/zone-hosts.yaml
+        - key: mappings__zone-namespaces.yaml
+          path: mappings/zone-namespaces.yaml
+        - key: mappings__zones.yaml
+          path: mappings/zones.yaml
+        - key: extraction__svc.yaml
+          path: extraction/svc.yaml
+        - key: extraction__svc-pvc.yaml
+          path: extraction/svc-pvc.yaml
+        - key: workflows__incident-open.yaml
+          path: workflows/incident-open.yaml
+        - key: workflows__incident-update.yaml
+          path: workflows/incident-update.yaml
+    imagePullSecrets:
+    - name: REPLACE_WITH_REGISTRY_SECRET
+  frontend:
+    image:
+      repository: registry.example.org/keepfork/keep-ui
+      tag: REPLACE_WITH_PUBLISHED_TAG
+      pullPolicy: IfNotPresent
+    envRender:
+      NEXT_TELEMETRY_DISABLED: '1'
+      TMPDIR: /state
+      TMP: /state
+      TEMP: /state
+    imagePullSecrets:
+    - name: REPLACE_WITH_REGISTRY_SECRET

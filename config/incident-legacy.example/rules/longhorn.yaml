@@ -1,0 +1,19 @@
+ruleName: longhorn
+sqlQuery:
+  sql: family == "storage" && alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+    && has(labels.node)
+  params: {}
+celQuery: family == "storage" && alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+  && has(labels.node)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- node
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · Longhorn {{ alert.node }}: {{ alert.alertname
+  }}'
+requireApprove: false
+threshold: 1

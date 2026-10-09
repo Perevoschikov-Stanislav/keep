@@ -5,5 +5,5 @@ export async function GET(
   request: Request,
   props: { params: Promise<{ id: string }> }
 ) {
-  redirect(`/incidents/${(await props.params).id}/alerts`);
+  redirect(`/incidents/${(await props.params).id}/alerts${new URL(request.url).search}`);
 }

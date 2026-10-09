@@ -1,0 +1,3922 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:keep:incident-policies:v1",
+  "title": "Keep incident policies v1 (contract; runtime implementation 20/24-29/21)",
+  "$ref": "#/$defs/Bundle",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Stable logical ID, scoped by tenant and resource kind.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "TeamId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Existing TeamPolicy ID; never inferred from a destination."
+    },
+    "TeamOrUnassigned": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TeamId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null selects only unassigned data, never all teams."
+    },
+    "FieldPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Event/normalized field path. Canonical security fields are not writable.",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+    },
+    "SourcePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Source path; quoted dictionary keys support Kubernetes label aliases.",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*|\\[\"[^\"\\\\]+\"\\])*$"
+    },
+    "SecretRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Reference only; resolved on the server, never placed in wire payload or preview.",
+      "pattern": "^(env:[A-Z_][A-Z0-9_]*|file:/run/secrets/[A-Za-z0-9_./-]+)$"
+    },
+    "Endpoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "HTTP(S) endpoint without credentials, query or fragment; HTTP is for the lab/private network.",
+      "pattern": "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9_./%-]*)?$"
+    },
+    "HttpsEndpoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "HTTP(S) endpoint without credentials, query or fragment; HTTP is for the lab/private network.",
+      "pattern": "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9_./%-]*)?$"
+    },
+    "LabIdentityEndpoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "HTTP only for loopback/private Kubernetes identity in the lab; JWT verification remains mandatory.",
+      "pattern": "^http://(localhost|127\\.0\\.0\\.1|[A-Za-z0-9.-]+\\.svc(\\.cluster\\.local)?)(:[0-9]{1,5})?(/[A-Za-z0-9_./%-]*)?$"
+    },
+    "IdentityEndpoint": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HttpsEndpoint"
+        },
+        {
+          "$ref": "#/$defs/LabIdentityEndpoint"
+        }
+      ],
+      "description": "HTTPS issuer/JWKS, or explicit local lab identity address."
+    },
+    "LinkUrl": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Rendered HTTP(S) URL; public query parameters/fragments are allowed, credentials are forbidden.",
+      "pattern": "^https?://[^\\s]+$"
+    },
+    "Uuid": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Canonical UUID."
+    },
+    "UtcTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "description": "UTC RFC3339 time with Z; server time controls silence coverage."
+    },
+    "Cel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "description": "CEL over the documented canonical event context; invalid syntax is rejected."
+    },
+    "TeamRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TeamOrUnassigned"
+      },
+      "minItems": 1,
+      "maxItems": 1000,
+      "description": "Explicit team scope; null only for unassigned.",
+      "uniqueItems": true
+    },
+    "IncidentEventTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "incident.created",
+          "incident.updated",
+          "incident.acknowledged",
+          "incident.resolved",
+          "incident.reopened",
+          "incident.escalated",
+          "incident.reminder",
+          "alert.added",
+          "alert.recovered",
+          "incident.unacknowledged",
+          "incident.flapping",
+          "incident.regrouped",
+          "incident.merged",
+          "incident.split",
+          "incident.assignee_changed",
+          "incident.ticket_created",
+          "silence.started",
+          "silence.updated",
+          "silence.ended",
+          "incident.repeated"
+        ],
+        "description": "Incident lifecycle notification type."
+      },
+      "minItems": 1,
+      "maxItems": 1000,
+      "description": "Enabled ordinary notifications.",
+      "uniqueItems": true
+    },
+    "SilenceEventTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "silence.created",
+          "silence.updated",
+          "silence.activated",
+          "silence.cancelled",
+          "silence.expired"
+        ],
+        "description": "Silence v1 lifecycle type."
+      },
+      "minItems": 1,
+      "maxItems": 1000,
+      "description": "Service events bypass ordinary notification suppression.",
+      "uniqueItems": true
+    },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "validate/apply",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "File relative to bundle directory; no traversal or symlink escape.",
+          "pattern": "^[A-Za-z0-9_-]+(/[A-Za-z0-9_.-]+)*\\.ya?ml$|^[A-Za-z0-9_-]+\\.ya?ml$"
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "Digest of exact file bytes; missing/changed artifacts reject the whole bundle.",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "ResourceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "validate/apply",
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "artifact": {
+          "$ref": "#/$defs/Artifact"
+        }
+      }
+    },
+    "Team": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "access checks after atomic apply",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/TeamId"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact OIDC group; use the full path returned by the issuer."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Membership groups, separate from role groups.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Trusted mapping output zone."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Zones owned by exactly one team.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "visible_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TeamId"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Reader team IDs; omitted means own team. Does not grant writes.",
+          "uniqueItems": true
+        }
+      }
+    },
+    "Roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "access checks after atomic apply",
+      "required": [],
+      "properties": {
+        "admin": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact OIDC role group; unknown groups grant no role."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing admin role; no new role registry.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "responder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact OIDC role group; unknown groups grant no role."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing responder role; no new role registry.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "viewer": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact OIDC role group; unknown groups grant no role."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing viewer role; no new role registry.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "noc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact OIDC role group; unknown groups grant no role."
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing noc role; no new role registry.",
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "IncidentView": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "UI filters after atomic apply",
+      "required": [
+        "id",
+        "name",
+        "cel"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id",
+          "description": "Unique view ID; all is reserved for the automatic ALL view."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Sidebar label."
+        },
+        "cel": {
+          "type": "string",
+          "maxLength": 8192,
+          "description": "Extra CEL filter; never grants access."
+        }
+      }
+    },
+    "TeamPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "access checks after atomic apply",
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Existing TeamPolicy schema version."
+        },
+        "visibility": {
+          "type": "string",
+          "enum": [
+            "team",
+            "all"
+          ],
+          "description": "Existing read visibility policy; writes still require membership.",
+          "default": "team"
+        },
+        "roles": {
+          "$ref": "#/$defs/Roles",
+          "default": {}
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Team"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing teams; no OPS/IT constants.",
+          "default": []
+        },
+        "incident_views": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IncidentView"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing optional sidebar views.",
+          "default": []
+        }
+      }
+    },
+    "MappingManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new events only; ownership migration needs a reviewed plan",
+      "required": [
+        "name",
+        "matchers"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Existing mapping name; does not replace the bundle logical ID."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048,
+          "description": "Existing description.",
+          "default": null
+        },
+        "file_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 255,
+          "description": "Existing display filename.",
+          "default": null
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647,
+          "description": "Existing mapping priority; larger value wins.",
+          "default": 0
+        },
+        "matchers": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/FieldPath"
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "description": "AND within a group.",
+            "uniqueItems": true
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "OR between matcher groups."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "topology"
+          ],
+          "description": "Existing mapping type.",
+          "default": "csv"
+        },
+        "rows": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null",
+                "object",
+                "array"
+              ]
+            }
+          },
+          "maxItems": 10000,
+          "description": "Existing mapping rows; arbitrary event attributes except canonical security fields.",
+          "default": null
+        },
+        "is_multi_level": {
+          "type": "boolean",
+          "default": false,
+          "description": "Existing multi-level mapping."
+        },
+        "new_property_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 255,
+          "default": null,
+          "description": "Required for multi-level mapping."
+        },
+        "prefix_to_remove": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 255,
+          "default": null,
+          "description": "Existing prefix removal."
+        }
+      }
+    },
+    "Extract": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new events; identity changes require migration preview",
+      "required": [
+        "pattern"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Regex applied to the first nonempty source; no implicit pod-name regex."
+        },
+        "group": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32,
+          "description": "Capture group index.",
+          "default": 1
+        }
+      }
+    },
+    "MissingValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new events",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "mark_unknown",
+            "literal"
+          ],
+          "description": "Unknown keeps missing diagnostics; literal is an explicit configured fallback."
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Literal fallback for non-security fields only."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "literal"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "NormalizedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new events; identity changes require migration preview",
+      "required": [
+        "name",
+        "sources",
+        "missing"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "cluster",
+            "environment",
+            "namespace",
+            "kind",
+            "resource",
+            "workload",
+            "service",
+            "routing_level"
+          ],
+          "description": "Normalized output only; tenant/team/role/fingerprint cannot be targets."
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourcePath"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Aliases in priority order; first non-null, nonempty value wins.",
+          "uniqueItems": true
+        },
+        "extract": {
+          "$ref": "#/$defs/Extract"
+        },
+        "missing": {
+          "$ref": "#/$defs/MissingValue"
+        }
+      }
+    },
+    "Normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new events; preserve original event and value provenance",
+      "required": [
+        "id",
+        "team_ids",
+        "priority",
+        "match",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Higher priority first."
+        },
+        "match": {
+          "$ref": "#/$defs/Cel"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NormalizedField"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "One rule owns each normalized output per match."
+        },
+        "presentation_ref": {
+          "$ref": "#/$defs/Id",
+          "description": "Optional presentation used in Keep before notification routing."
+        }
+      }
+    },
+    "DisplayField": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "render next projection, preserve manual text",
+      "required": [
+        "path",
+        "label"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/FieldPath"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Engineer-facing label."
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Display order; ties retain declaration order.",
+          "default": 0
+        },
+        "when": {
+          "$ref": "#/$defs/Cel"
+        }
+      }
+    },
+    "Link": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "render next projection",
+      "required": [
+        "label",
+        "url_template"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Link label."
+        },
+        "url_template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "HTTP(S) or Keep link template; never a credential/reference expansion."
+        }
+      }
+    },
+    "ActionPresentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next projection; action permission always comes from canonical RBAC",
+      "required": [
+        "command",
+        "label"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "ack",
+            "resolve",
+            "assign",
+            "silence",
+            "unack",
+            "ticket"
+          ],
+          "description": "Canonical action, no custom privileged operation."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Configured button/link label; array position defines order."
+        },
+        "when": {
+          "$ref": "#/$defs/Cel"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "one_click",
+            "confirm_in_keep"
+          ]
+        },
+        "identity_fallback": {
+          "type": "string",
+          "enum": [
+            "confirm_in_keep",
+            "reject"
+          ]
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "default",
+            "primary",
+            "success",
+            "warning",
+            "danger"
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 2678400
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "Presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next UI/notification projection; user_summary and notes remain unchanged",
+      "required": [
+        "id",
+        "title",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Existing mustache-style template over permitted canonical fields."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "description": "Generated description, separate from operator notes."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayField"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Configured labels/order.",
+          "default": []
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Optional documentation, dashboard and Keep links.",
+          "default": []
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionPresentation"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Interactive actions or explicit Keep-link fallback.",
+          "default": []
+        },
+        "severity_colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "info": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "low": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "medium": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "high": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "critical": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "description": "Optional rendering colors; omitted means no color.",
+          "default": {}
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceCollection"
+          },
+          "maxItems": 32,
+          "default": [],
+          "description": "Configured linked-alert display data, generated by Keep."
+        },
+        "source_links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLink"
+          },
+          "maxItems": 32,
+          "default": [],
+          "description": "Configured linked-alert display data, generated by Keep."
+        },
+        "prefer_active_alerts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show active linked alerts, or all linked alerts when none are active."
+        },
+        "max_links": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 50,
+          "description": "Maximum total deduplicated template/source links."
+        },
+        "footer": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2048
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 32
+        },
+        "status_colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "firing": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "acknowledged": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "resolved": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "merged": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "deleted": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "required": []
+        }
+      }
+    },
+    "Reopen": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "existing episode pins policy; next episode uses active revision",
+      "required": [
+        "mode",
+        "within_seconds",
+        "ack",
+        "assignee"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "reopen",
+            "new_incident"
+          ],
+          "description": "Reuse ID within window or create a linked new incident."
+        },
+        "within_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800,
+          "description": "Half-open reopen window after resolution; outside creates a new incident."
+        },
+        "ack": {
+          "type": "string",
+          "enum": [
+            "reset",
+            "preserve"
+          ],
+          "description": "New incident always resets ACK."
+        },
+        "assignee": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "clear"
+          ],
+          "description": "Operator notes/links are never cleared."
+        }
+      }
+    },
+    "Flapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "existing episode pins policy; next episode uses active revision",
+      "required": [
+        "enabled",
+        "window_seconds",
+        "transition_threshold",
+        "reset_after_seconds"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable flapping classification; transition audit is always retained."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Sliding policy-clock window, lower bound excluded."
+        },
+        "transition_threshold": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 1000,
+          "description": "Distinct firing/resolved transitions; duplicates do not count."
+        },
+        "reset_after_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Quiet time after last transition clears classification and window history."
+        }
+      }
+    },
+    "Lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "existing episode pins policy; next episode uses active revision",
+      "required": [
+        "id",
+        "resolve_on",
+        "reopen",
+        "flapping",
+        "clock",
+        "late_event_policy"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "resolve_on": {
+          "type": "string",
+          "enum": [
+            "first_resolved",
+            "last_resolved",
+            "all_resolved",
+            "never"
+          ],
+          "description": "Existing Rule.resolve_on values; canonical linked alerts only."
+        },
+        "reopen": {
+          "$ref": "#/$defs/Reopen"
+        },
+        "flapping": {
+          "$ref": "#/$defs/Flapping"
+        },
+        "clock": {
+          "type": "string",
+          "enum": [
+            "event_time",
+            "receive_time"
+          ],
+          "description": "Canonical timestamp basis; original time is still stored."
+        },
+        "late_event_policy": {
+          "const": "history_only",
+          "type": "string",
+          "description": "Older events never roll back newer state; kept in history."
+        }
+      }
+    },
+    "Correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new groups/episodes; no implicit regrouping of open incidents",
+      "required": [
+        "id",
+        "team_ids",
+        "priority",
+        "match",
+        "group_by",
+        "required_fields",
+        "missing_required",
+        "window_seconds",
+        "lifecycle_ref",
+        "presentation_ref"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Higher priority first; ties within a team are rejected."
+        },
+        "match": {
+          "$ref": "#/$defs/Cel"
+        },
+        "group_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldPath"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Ordered typed tuple plus mandatory tenant/team/rule scope.",
+          "uniqueItems": true
+        },
+        "required_fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldPath"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Must include every group_by path.",
+          "uniqueItems": true
+        },
+        "missing_required": {
+          "type": "string",
+          "enum": [
+            "separate_alert",
+            "skip_correlation"
+          ],
+          "description": "Never join missing required values under a shared null key."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Join window in seconds; equality at upper bound opens a new group."
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Minimum distinct alerts before incident creation.",
+          "default": 1
+        },
+        "create_on": {
+          "type": "string",
+          "enum": [
+            "any",
+            "all"
+          ],
+          "description": "Existing Rule.create_on values.",
+          "default": "any"
+        },
+        "lifecycle_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "presentation_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "automation_ref": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional team-compatible automation policy."
+        },
+        "multi_level": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expand the values of one dictionary group_by path into distinct scoped groups."
+        },
+        "multi_level_property_name": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FieldPath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path within each dictionary entry, required when multi_level is true."
+        }
+      }
+    },
+    "Retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next attempt rechecks active destination and canonical state",
+      "required": [],
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Total attempts including the initial send.",
+          "default": 5
+        },
+        "initial_backoff_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300,
+          "description": "First retry delay.",
+          "default": 2
+        },
+        "max_backoff_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Backoff cap.",
+          "default": 60
+        },
+        "multiplier": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 2,
+          "description": "Exponential multiplier."
+        }
+      }
+    },
+    "RateLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next attempt; independent per destination",
+      "required": [],
+      "properties": {
+        "per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum request rate.",
+          "default": 5
+        },
+        "burst": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Allowed initial burst.",
+          "default": 5
+        }
+      }
+    },
+    "Delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next attempt rechecks active destination and canonical state",
+      "required": [],
+      "properties": {
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Transport request timeout.",
+          "default": 10
+        },
+        "retry": {
+          "$ref": "#/$defs/Retry",
+          "default": {}
+        },
+        "rate_limit": {
+          "$ref": "#/$defs/RateLimit",
+          "default": {}
+        },
+        "debounce_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600,
+          "description": "Ordinary notifications only; lifecycle silence events are never collapsed.",
+          "default": 0
+        }
+      }
+    },
+    "Dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "worker reload; time-based silence coverage is always evaluated at request/send time",
+      "required": [],
+      "properties": {
+        "scan_interval_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "description": "Outbox/time-transition scan cadence; never extends the silence interval.",
+          "default": 5
+        },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum records examined per scan.",
+          "default": 100
+        },
+        "lease_seconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Per-delivery worker lease; renew/verify ownership before sending.",
+          "default": 60
+        },
+        "snapshot_page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Bounded recovery snapshot pages.",
+          "default": 100
+        }
+      }
+    },
+    "Capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "validate against registered adapter; cannot invent capabilities",
+      "required": [
+        "update",
+        "actions",
+        "receipts"
+      ],
+      "properties": {
+        "update": {
+          "type": "boolean",
+          "description": "Can edit one existing incident projection."
+        },
+        "actions": {
+          "type": "boolean",
+          "description": "Can submit verified interactive actions."
+        },
+        "receipts": {
+          "type": "boolean",
+          "description": "Returns a recoverable external message identity."
+        },
+        "thread": {
+          "type": "boolean",
+          "description": "Can create a reply under a confirmed root post."
+        }
+      }
+    },
+    "Transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next send; switching transports does not change domain policy",
+      "required": [
+        "id",
+        "kind",
+        "adapter_ref",
+        "endpoint",
+        "auth_ref",
+        "capabilities"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "mattermost",
+            "http_json"
+          ],
+          "description": "Adapter protocol, never incident identity."
+        },
+        "adapter_ref": {
+          "type": "string",
+          "enum": [
+            "mattermost-api-v1",
+            "mattermost-bridge-v1",
+            "http-json-v1",
+            "mattermost-api-v2"
+          ],
+          "description": "Contract catalog profile; implementation follows in 29/21."
+        },
+        "endpoint": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "auth_ref": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null only for explicitly public/lab outgoing receivers."
+        },
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "delivery": {
+          "$ref": "#/$defs/Delivery",
+          "default": {}
+        },
+        "callback_client_ref": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Registered service client; required for interactive actions."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "http_json"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "adapter_ref": {
+                "const": "http-json-v1"
+              },
+              "capabilities": {
+                "const": {
+                  "update": false,
+                  "actions": false,
+                  "receipts": false
+                }
+              },
+              "callback_client_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mattermost"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "adapter_ref": {
+                "enum": [
+                  "mattermost-api-v1",
+                  "mattermost-bridge-v1",
+                  "mattermost-api-v2"
+                ]
+              },
+              "auth_ref": {
+                "$ref": "#/$defs/SecretRef"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "MattermostDestinationOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next send; never controls grouping/access",
+      "required": [
+        "channel_id"
+      ],
+      "properties": {
+        "channel_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "External channel ID only, no role or Keep team inference."
+        }
+      }
+    },
+    "HttpDestinationOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next send",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Relative receiver path without credentials, query or traversal.",
+          "pattern": "^/[A-Za-z0-9_/-]*$"
+        }
+      }
+    },
+    "Destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next send; team reassignment requires reviewed migration",
+      "required": [
+        "id",
+        "team_id",
+        "transport_ref",
+        "options"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "transport_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "options": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MattermostDestinationOptions"
+            },
+            {
+              "$ref": "#/$defs/HttpDestinationOptions"
+            }
+          ],
+          "description": "Options selected by the referenced adapter, validated by profile."
+        }
+      }
+    },
+    "ContactAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next notification; operator/role identity is separate",
+      "required": [
+        "transport_ref",
+        "address"
+      ],
+      "properties": {
+        "transport_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "address": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Non-secret external contact handle/address."
+        }
+      }
+    },
+    "Contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next notification",
+      "required": [
+        "id",
+        "team_id",
+        "label",
+        "addresses"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Contact label."
+        },
+        "addresses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContactAddress"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Transport-scoped handles; no role inference."
+        }
+      }
+    },
+    "EscalationLevel": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "current episode keeps deadlines/contacts; next episode uses active revision",
+      "required": [
+        "id",
+        "after_seconds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "after_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800,
+          "description": "Offset from SLA origin; levels strictly increasing."
+        },
+        "contact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Receivers from the incident team.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "destination_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Destinations from the incident team.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "workflow_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing workflow logical references.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "repeat_every_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800,
+          "description": "Zero disables repeating this level.",
+          "default": 0
+        },
+        "repeat_limit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Total level executions; 0 repeats until the next level or stop condition, 1 disables repeat.",
+          "default": 1
+        }
+      }
+    },
+    "Reminder": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "current episode pins policy; next episode uses active revision",
+      "required": [
+        "every_seconds",
+        "destination_refs"
+      ],
+      "properties": {
+        "every_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "Reminder cadence while not stopped."
+        },
+        "contact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Same-team contacts.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "destination_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Same-team destinations.",
+          "uniqueItems": true
+        }
+      }
+    },
+    "Ticket": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new idempotent operation; manual links preserved",
+      "required": [
+        "workflow_ref",
+        "url_template"
+      ],
+      "properties": {
+        "workflow_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "url_template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Ticket link template; credentials remain in workflow secret references."
+        },
+        "enrichment_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "default": "ticket_url",
+          "description": "Incident metadata key; an existing manual value always wins."
+        }
+      }
+    },
+    "Automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "current episode pins policy; explicit reschedule plan required to change existing jobs",
+      "required": [
+        "id",
+        "team_ids",
+        "sla_start",
+        "ack_deadline_seconds",
+        "stop_on",
+        "on_reopen",
+        "levels"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "sla_start": {
+          "type": "string",
+          "enum": [
+            "created",
+            "last_reopen"
+          ],
+          "description": "Clock origin for ACK deadline and level offsets."
+        },
+        "ack_deadline_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "ACK deadline relative to SLA origin."
+        },
+        "stop_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "acknowledged",
+              "resolved"
+            ],
+            "description": "Stop condition."
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Must include resolved.",
+          "uniqueItems": true,
+          "contains": {
+            "const": "resolved"
+          }
+        },
+        "on_reopen": {
+          "type": "string",
+          "enum": [
+            "reset",
+            "continue"
+          ],
+          "description": "New incident always resets; continuing only for same-ID episode."
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EscalationLevel"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Ordered escalation levels."
+        },
+        "reminder": {
+          "$ref": "#/$defs/Reminder"
+        },
+        "ticket": {
+          "$ref": "#/$defs/Ticket"
+        },
+        "on_policy_update": {
+          "type": "string",
+          "enum": [
+            "next_episode",
+            "reschedule",
+            "cancel"
+          ],
+          "default": "next_episode",
+          "description": "Next episode pins the active policy; reschedule replaces the current chain from its existing SLA origin; cancel stops the current chain."
+        },
+        "execution_lease_seconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 86400,
+          "default": 300,
+          "description": "Worker lease renewed before each provider attempt; an expired execution with a started effect is uncertain and never automatically replayed."
+        },
+        "match": {
+          "$ref": "#/$defs/Cel",
+          "default": "true",
+          "description": "Public normalized/incident condition; false stops SLA/operations without changing correlation."
+        }
+      }
+    },
+    "Route": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next projection/retry; skipped history is never replayed; after_silence optionally sends current active state",
+      "required": [
+        "id",
+        "team_ids",
+        "priority",
+        "match",
+        "event_types",
+        "destination_refs",
+        "presentation_ref",
+        "delivery_mode",
+        "update_fallback",
+        "actions_fallback"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Higher priority first; team/event ties reject."
+        },
+        "match": {
+          "$ref": "#/$defs/Cel"
+        },
+        "event_types": {
+          "$ref": "#/$defs/IncidentEventTypes"
+        },
+        "destination_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Independent fan-out; every destination must belong to a selected team.",
+          "uniqueItems": true
+        },
+        "contact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Same-team receivers.",
+          "uniqueItems": true,
+          "default": []
+        },
+        "presentation_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "delivery_mode": {
+          "type": "string",
+          "enum": [
+            "upsert",
+            "append"
+          ],
+          "description": "One canonical incident per destination; no arbitrary aggregation."
+        },
+        "update_fallback": {
+          "type": "string",
+          "enum": [
+            "append",
+            "reject"
+          ],
+          "description": "Explicit behavior when adapter cannot update."
+        },
+        "actions_fallback": {
+          "type": "string",
+          "enum": [
+            "keep_link",
+            "reject"
+          ],
+          "description": "Without trusted buttons, require login/confirmation in Keep."
+        },
+        "after_silence": {
+          "type": "string",
+          "enum": [
+            "none",
+            "current_active"
+          ],
+          "default": "none",
+          "description": "On observed silence suppression ending, send one fresh incident.updated projection if still firing/acknowledged. Skipped history and SLA remain unchanged. Applies to every transport."
+        },
+        "initial_delivery": {
+          "type": "string",
+          "enum": [
+            "all",
+            "active_only"
+          ],
+          "default": "all",
+          "description": "active_only creates a new destination binding only for a firing/acknowledged incident; existing confirmed bindings still receive resolution. Rechecked before sending."
+        }
+      }
+    },
+    "ProofProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next command; revocation does not rewrite prior audit",
+      "required": [
+        "id",
+        "issuer",
+        "audience",
+        "jwks_url",
+        "algorithms",
+        "authorized_parties",
+        "required_claims"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "issuer": {
+          "$ref": "#/$defs/IdentityEndpoint"
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Exact Keep actor-proof audience."
+        },
+        "jwks_url": {
+          "$ref": "#/$defs/IdentityEndpoint"
+        },
+        "algorithms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "RS256",
+              "ES256"
+            ],
+            "description": "Asymmetric JWT algorithms only."
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "No none/HS algorithms.",
+          "uniqueItems": true
+        },
+        "authorized_parties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Allowed client ID in the configured party claim."
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Explicit clients.",
+          "uniqueItems": true
+        },
+        "party_claim": {
+          "type": "string",
+          "enum": [
+            "azp",
+            "client_id"
+          ],
+          "description": "Claim bound to authorized_parties.",
+          "default": "azp"
+        },
+        "groups_claim": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Exact claim containing group paths consumed by the existing TeamPolicy.",
+          "default": "groups"
+        },
+        "username_claim": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Verified claim for the Keep username/assignee; null uses sub. A configured claim must be present.",
+          "default": null
+        },
+        "required_claims": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Required literal non-secret claim value."
+          },
+          "minProperties": 1,
+          "maxProperties": 16,
+          "description": "Explicit token profile, e.g. typ: Bearer."
+        },
+        "max_age_seconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600,
+          "description": "Require iat/exp; freshness bound.",
+          "default": 300
+        },
+        "clock_skew_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "description": "Bounded verifier clock skew.",
+          "default": 30
+        },
+        "jwks_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Trusted JWKS fetch timeout; fail closed on unavailable keys.",
+          "default": 5
+        },
+        "jwks_cache_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "description": "Bounded public-key cache lifetime; unknown kid triggers refresh.",
+          "default": 300
+        }
+      }
+    },
+    "ServiceClient": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next command; user proof and canonical authorization remain mandatory",
+      "required": [
+        "id",
+        "auth_ref",
+        "origin",
+        "team_ids",
+        "proof_profile_refs",
+        "scopes"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "auth_ref": {
+          "$ref": "#/$defs/SecretRef"
+        },
+        "origin": {
+          "$ref": "#/$defs/Id",
+          "description": "Origin registered here, never copied from command body."
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "proof_profile_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Trusted actor-proof profiles; required for delegated mutation scopes.",
+          "uniqueItems": true
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read:silence",
+              "write:silence",
+              "update:silence",
+              "update:incident",
+              "read:incident",
+              "update:notification"
+            ],
+            "description": "Service permission ceiling, intersected with user scopes/team ownership."
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "No admin wildcard or generic impersonation.",
+          "uniqueItems": true
+        }
+      }
+    },
+    "Subscriber": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "new outbox events; disable stops delivery, not audit",
+      "required": [
+        "id",
+        "team_ids",
+        "event_types",
+        "destination_refs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "team_ids": {
+          "$ref": "#/$defs/TeamRefs"
+        },
+        "event_types": {
+          "$ref": "#/$defs/SilenceEventTypes"
+        },
+        "destination_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "description": "Same-team independent receivers; failure never rolls back the silence.",
+          "uniqueItems": true
+        }
+      }
+    },
+    "Removal": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "reviewed deletion of configuration only; operator/history state is never deleted",
+      "required": [
+        "kind",
+        "id",
+        "expected_resource_digest"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "teams",
+            "mappings",
+            "workflows",
+            "normalization",
+            "presentations",
+            "correlation",
+            "lifecycle",
+            "automation",
+            "contacts",
+            "routes",
+            "transports",
+            "destinations",
+            "proof_profiles",
+            "service_clients",
+            "subscribers",
+            "extraction",
+            "rules",
+            "notification_policies"
+          ],
+          "description": "Resource kind in the previously active managed snapshot."
+        },
+        "id": {
+          "$ref": "#/$defs/TeamId",
+          "description": "Previously managed logical ID; no name-based adoption/deletion."
+        },
+        "expected_resource_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "Must equal the previously applied resource digest in preview/apply 24.",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "Bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "atomic validate/preview/apply",
+      "required": [
+        "api_version",
+        "kind",
+        "id",
+        "tenant_id",
+        "revision",
+        "keep_url",
+        "access"
+      ],
+      "properties": {
+        "api_version": {
+          "type": "string",
+          "const": "keep.incidents/v1",
+          "description": "Bundle version; independent of wire schema_version."
+        },
+        "kind": {
+          "type": "string",
+          "const": "IncidentPolicies",
+          "description": "Explicit future bundle, never a legacy loader input."
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Must equal the trusted deployment/apply tenant."
+        },
+        "revision": {
+          "$ref": "#/$defs/Id",
+          "description": "Operator label; canonical digest, not this string, identifies exact content."
+        },
+        "keep_url": {
+          "$ref": "#/$defs/Endpoint",
+          "description": "Public Keep URL for fallback actions/links."
+        },
+        "access": {
+          "$ref": "#/$defs/Artifact",
+          "description": "Exactly one existing TeamPolicy document; no second role/team registry."
+        },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceArtifact"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing mapping YAML artifacts.",
+          "default": []
+        },
+        "workflows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceArtifact"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Existing workflow YAML artifacts.",
+          "default": []
+        },
+        "normalization": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Normalization"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Ordered first-match normalization rules.",
+          "default": []
+        },
+        "presentations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Presentation"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Reusable generated UI/message presentation.",
+          "default": []
+        },
+        "correlation_overlap": {
+          "type": "string",
+          "enum": [
+            "first_match",
+            "parallel"
+          ],
+          "description": "First match picks highest priority; parallel keeps distinct rule scope.",
+          "default": "first_match"
+        },
+        "correlation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Correlation"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Scoped correlation rules.",
+          "default": []
+        },
+        "lifecycle": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Lifecycle"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Lifecycle profiles.",
+          "default": []
+        },
+        "automation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Automation"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "SLA/escalation/reminder profiles.",
+          "default": []
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contact"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Team-scoped recipient references.",
+          "default": []
+        },
+        "routing_overlap": {
+          "type": "string",
+          "enum": [
+            "first_match",
+            "fanout"
+          ],
+          "description": "Fanout evaluates all matches, deduplicating destination IDs.",
+          "default": "first_match"
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Route"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Ordinary incident routes.",
+          "default": []
+        },
+        "transports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Transport"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "No obligatory Mattermost transport.",
+          "default": []
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Destination"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Transport-scoped destination options.",
+          "default": []
+        },
+        "proof_profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProofProfile"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Trusted OIDC actor-proof profiles.",
+          "default": []
+        },
+        "service_clients": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ServiceClient"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Limited registered integration identities.",
+          "default": []
+        },
+        "subscribers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Subscriber"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Silence lifecycle subscriptions; not ordinary routes.",
+          "default": []
+        },
+        "dispatch": {
+          "$ref": "#/$defs/Dispatch",
+          "default": {}
+        },
+        "deletions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Removal"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Omission alone never deletes a managed resource; requires matching previous digest.",
+          "default": []
+        },
+        "extraction": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceArtifact"
+          },
+          "maxItems": 1000,
+          "default": [],
+          "description": "Existing Keep extraction artifacts."
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResourceArtifact"
+          },
+          "maxItems": 1000,
+          "default": [],
+          "description": "Existing Keep rules artifacts."
+        },
+        "adoptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Adoption"
+          },
+          "maxItems": 1000,
+          "default": [],
+          "description": "Explicit internal ID and current resource digest; no name-based adoption."
+        },
+        "runtime_ownership": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeOwnership"
+          },
+          "maxItems": 1000,
+          "default": []
+        },
+        "notification_defaults": {
+          "$ref": "#/$defs/NotificationSettings",
+          "description": "Global notification settings; omitted values inherit existing route behavior."
+        },
+        "notification_policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotificationPolicy"
+          },
+          "maxItems": 1000,
+          "default": [],
+          "description": "Deterministic team, route, family and escalation-level overrides."
+        }
+      }
+    },
+    "ReadyField": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "projection from latest permitted canonical state",
+      "required": [
+        "label",
+        "value"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Ready display label."
+        },
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Ready sanitized value; no transport derivation."
+        }
+      }
+    },
+    "ReadyAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "verified command or Keep confirmation; never actor from context",
+      "required": [
+        "command",
+        "label",
+        "keep_url"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "enum": [
+            "ack",
+            "unack",
+            "resolve",
+            "assign",
+            "silence",
+            "ticket"
+          ],
+          "description": "Canonical Keep command."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Ready action label."
+        },
+        "keep_url": {
+          "$ref": "#/$defs/LinkUrl"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "one_click",
+            "confirm_in_keep"
+          ]
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "default",
+            "primary",
+            "success",
+            "warning",
+            "danger"
+          ]
+        }
+      }
+    },
+    "ReadyLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "rendered in Keep before delivery; adapter never expands templates",
+      "required": [
+        "label",
+        "url"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Ready link label."
+        },
+        "url": {
+          "$ref": "#/$defs/LinkUrl"
+        }
+      }
+    },
+    "Notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "rebuild before each ordinary send/retry; silence gate on canonical data",
+      "required": [
+        "schema_version",
+        "notification_id",
+        "event_id",
+        "event_type",
+        "occurred_at",
+        "tenant_id",
+        "team_id",
+        "incident_id",
+        "incident_revision",
+        "episode",
+        "policy_digest",
+        "correlation_id",
+        "destination_ref",
+        "transport_ref",
+        "keep_url",
+        "title",
+        "description",
+        "fields",
+        "links",
+        "contact_refs",
+        "actions"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Wire version, aligned with silence v1."
+        },
+        "notification_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "event_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "incident.created",
+            "incident.updated",
+            "incident.acknowledged",
+            "incident.resolved",
+            "incident.reopened",
+            "incident.escalated",
+            "incident.reminder",
+            "alert.added",
+            "alert.recovered",
+            "incident.unacknowledged",
+            "incident.flapping",
+            "incident.regrouped",
+            "incident.merged",
+            "incident.split",
+            "incident.assignee_changed",
+            "incident.ticket_created",
+            "silence.started",
+            "silence.updated",
+            "silence.ended",
+            "incident.repeated"
+          ],
+          "description": "Already-selected notification type."
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Server-assigned tenant."
+        },
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "incident_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "description": "Canonical state revision."
+        },
+        "episode": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Persistent episode number."
+        },
+        "policy_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "Applied complete bundle digest.",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "correlation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512,
+          "description": "Trace correlation; never authorization."
+        },
+        "destination_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "transport_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "keep_url": {
+          "$ref": "#/$defs/LinkUrl"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Ready canonical title."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "description": "Ready description projected from uncovered data only."
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": null,
+          "description": "Ready configured color; null means no color. Adapter does not infer severity."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReadyField"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Ready fields in final order."
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReadyLink"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Rendered links: templates must already be expanded."
+        },
+        "contact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Chosen contacts; address resolution belongs to adapter.",
+          "uniqueItems": true
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReadyAction"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Operator must still prove identity."
+        },
+        "projection_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Monotonic rendered projection version; incident_revision is the command CAS version.",
+          "default": 1
+        },
+        "footer": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 32
+        }
+      }
+    },
+    "IncidentCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "one canonical authorized optimistic state transition",
+      "required": [
+        "schema_version",
+        "client_request_id",
+        "incident_id",
+        "expected_revision",
+        "command",
+        "correlation_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Wire version."
+        },
+        "client_request_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "description": "Stale state is a conflict, never silently overwritten."
+        },
+        "command": {
+          "type": "string",
+          "enum": [
+            "ack",
+            "unack",
+            "resolve",
+            "assign"
+          ],
+          "description": "Silence commands reuse the existing v1 schemas/routes."
+        },
+        "correlation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512,
+          "description": "Non-secret trace context."
+        },
+        "assignee": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256,
+          "description": "Assign value; must resolve to a permitted Keep user."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "command": {
+                "const": "assign"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "assignee"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "assignee"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "DeliveryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "delivery metadata only; does not ACK/resolve the incident",
+      "required": [
+        "schema_version",
+        "notification_id",
+        "destination_ref",
+        "status",
+        "external_id",
+        "delivered_revision"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Wire version."
+        },
+        "notification_id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "destination_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "delivered",
+            "unknown",
+            "failed"
+          ],
+          "description": "Unknown after timeout is not confirmed delivery."
+        },
+        "external_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512,
+          "description": "Opaque adapter ID, never mandatory in notification/command."
+        },
+        "delivered_revision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Last confirmed projected revision; null when not confirmed."
+        }
+      }
+    },
+    "Adoption": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "explicit ownership adoption",
+      "required": [
+        "kind",
+        "id",
+        "target_id",
+        "expected_resource_digest"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "mappings",
+            "workflows",
+            "extraction",
+            "rules"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expected_resource_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "RuntimeOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "reviewed cutover; gates affect the Keep runtime only",
+      "required": [
+        "team_id",
+        "domain",
+        "notifications",
+        "legacy_snooze"
+      ],
+      "properties": {
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "domain": {
+          "type": "string",
+          "enum": [
+            "keep",
+            "legacy",
+            "disabled"
+          ],
+          "description": "Owner of automatic grouping, lifecycle and SLA. Manual commands remain available."
+        },
+        "notifications": {
+          "type": "string",
+          "enum": [
+            "keep",
+            "legacy",
+            "disabled"
+          ],
+          "description": "Owner of the new shared incident/silence sender. Rechecked before dispatch."
+        },
+        "legacy_snooze": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "disabled"
+          ],
+          "description": "Reviewed external bridge snooze owner; Keep cannot stop an unchanged bridge."
+        }
+      }
+    },
+    "MigrationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "explicit mapping; a legacy fingerprint is never identity evidence",
+      "required": [
+        "legacy_rule_id",
+        "correlation_ref"
+      ],
+      "properties": {
+        "legacy_rule_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "correlation_ref": {
+          "$ref": "#/$defs/Id"
+        }
+      }
+    },
+    "MigrationDestination": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "explicit adapter destination mapping",
+      "required": [
+        "legacy_id",
+        "destination_ref"
+      ],
+      "properties": {
+        "legacy_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "destination_ref": {
+          "$ref": "#/$defs/Id"
+        }
+      }
+    },
+    "MigrationPostReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "reviewed read-only transport receipt; old buttons still require retirement",
+      "required": [
+        "external_id",
+        "destination_external_id",
+        "exists",
+        "checked_at",
+        "source"
+      ],
+      "properties": {
+        "external_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "destination_external_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "read_only_transport_export"
+          ]
+        }
+      }
+    },
+    "MigrationRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "explicit root adoption; split/merge remain a manual plan and do not rewrite history",
+      "required": [
+        "root_id",
+        "incident_id",
+        "team_id"
+      ],
+      "properties": {
+        "root_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "incident_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "adopt",
+            "retain_history"
+          ],
+          "default": "adopt"
+        },
+        "post_policy": {
+          "type": "string",
+          "enum": [
+            "create",
+            "adopt",
+            "none"
+          ],
+          "default": "create"
+        },
+        "verified_post": {
+          "$ref": "#/$defs/MigrationPostReceipt"
+        },
+        "snooze": {
+          "type": "string",
+          "enum": [
+            "import",
+            "retain_legacy"
+          ],
+          "default": "retain_legacy"
+        },
+        "automation_start": {
+          "type": "string",
+          "enum": [
+            "cutover_time",
+            "original_open"
+          ],
+          "default": "cutover_time",
+          "description": "New SLA clock; local bridge SLA levels never seed canonical counters."
+        },
+        "window_start": {
+          "type": "string",
+          "enum": [
+            "cutover_time",
+            "original_open"
+          ],
+          "default": "cutover_time",
+          "description": "Start of the adopted correlation window; original creation time and history are retained."
+        }
+      }
+    },
+    "LegacyIncidentMigration": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "read-only preview; explicit atomic import with immutable receipts and source/config digests",
+      "required": [
+        "api_version",
+        "kind",
+        "id",
+        "tenant_id",
+        "source_id",
+        "source_digest",
+        "candidate_digest",
+        "roots"
+      ],
+      "properties": {
+        "api_version": {
+          "type": "string",
+          "const": "keep.incidents/v1"
+        },
+        "kind": {
+          "type": "string",
+          "const": "LegacyIncidentMigration"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "source_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "source_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "candidate_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MigrationRule"
+          },
+          "maxItems": 1000,
+          "default": []
+        },
+        "zones": {
+          "type": "object",
+          "maxProperties": 1000,
+          "additionalProperties": {
+            "$ref": "#/$defs/TeamOrUnassigned"
+          },
+          "default": {},
+          "description": "No fallback for unknown legacy zones; canonical owner must match."
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MigrationDestination"
+          },
+          "maxItems": 1000,
+          "default": []
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MigrationRoot"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "post_receipt_max_age_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "default": 3600,
+          "description": "Maximum age of a reviewed read-only receipt for adopting a legacy post."
+        }
+      }
+    },
+    "SourceCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next generated presentation; identity/operator fields unchanged",
+      "required": [
+        "id",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourcePath"
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "description": "Ordered source fallbacks per linked alert; credential paths forbidden."
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "description": "Maximum distinct items shown."
+        },
+        "max_chars": {
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 2048,
+          "default": 2048,
+          "description": "Maximum rendered characters, including truncation indicator."
+        }
+      }
+    },
+    "SourceLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-change": "next generated presentation",
+      "required": [
+        "label",
+        "sources"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 112
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourcePath"
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "description": "Ordered source fallbacks per linked alert; credential paths forbidden."
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "description": "Maximum distinct items shown."
+        }
+      }
+    },
+    "NotificationEventType": {
+      "type": "string",
+      "enum": [
+        "incident.created",
+        "incident.updated",
+        "incident.acknowledged",
+        "incident.resolved",
+        "incident.reopened",
+        "incident.escalated",
+        "incident.reminder",
+        "alert.added",
+        "alert.recovered",
+        "incident.unacknowledged",
+        "incident.flapping",
+        "incident.regrouped",
+        "incident.merged",
+        "incident.split",
+        "incident.assignee_changed",
+        "incident.ticket_created",
+        "silence.started",
+        "silence.updated",
+        "silence.ended",
+        "incident.repeated"
+      ]
+    },
+    "NotificationEventPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "do": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "thread",
+              "repost",
+              "post",
+              "none"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "not": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "none"
+                }
+              },
+              {
+                "minItems": 2
+              }
+            ]
+          }
+        },
+        "else_do": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "thread",
+              "repost",
+              "post",
+              "none"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "not": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "none"
+                }
+              },
+              {
+                "minItems": 2
+              }
+            ]
+          }
+        },
+        "when": {
+          "$ref": "#/$defs/Cel"
+        },
+        "within_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800
+        },
+        "throttle_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800
+        },
+        "batch_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "every_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "after_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800
+        },
+        "repeat_limit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "stop_when": {
+          "$ref": "#/$defs/Cel"
+        },
+        "mention": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "assignee",
+              "responsible",
+              "escalation.contacts"
+            ]
+          },
+          "maxItems": 3
+        },
+        "contact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "maxItems": 1000
+        }
+      },
+      "required": [],
+      "x-change": "next notification; validate before atomic apply"
+    },
+    "NotificationStub": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keep_card": {
+          "type": "boolean"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "required": [],
+      "x-change": "next notification; validate before atomic apply"
+    },
+    "NotificationCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Existing mustache-style template over permitted canonical fields."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "description": "Generated description, separate from operator notes."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DisplayField"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Configured labels/order."
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "description": "Optional documentation, dashboard and Keep links."
+        },
+        "severity_colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "info": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "low": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "medium": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "high": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "critical": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 7,
+              "description": "Configured color.",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "description": "Optional rendering colors; omitted means no color."
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceCollection"
+          },
+          "maxItems": 32,
+          "description": "Configured linked-alert display data, generated by Keep."
+        },
+        "source_links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLink"
+          },
+          "maxItems": 32,
+          "description": "Configured linked-alert display data, generated by Keep."
+        },
+        "prefer_active_alerts": {
+          "type": "boolean",
+          "description": "Show active linked alerts, or all linked alerts when none are active."
+        },
+        "max_links": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum total deduplicated template/source links."
+        },
+        "footer": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 2048
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 32
+        },
+        "status_colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "firing": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "acknowledged": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "resolved": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "merged": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "deleted": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "required": []
+        }
+      },
+      "required": [],
+      "x-change": "next notification; validate before atomic apply"
+    },
+    "NotificationSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "incident.created": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.updated": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.acknowledged": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.resolved": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.reopened": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.escalated": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.reminder": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "alert.added": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "alert.recovered": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.unacknowledged": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.flapping": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.regrouped": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.merged": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.split": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.assignee_changed": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.ticket_created": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "silence.started": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "silence.updated": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "silence.ended": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            },
+            "incident.repeated": {
+              "$ref": "#/$defs/NotificationEventPolicy"
+            }
+          },
+          "required": []
+        },
+        "presentation_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "card": {
+          "$ref": "#/$defs/NotificationCard"
+        },
+        "buttons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActionPresentation"
+          },
+          "maxItems": 32
+        },
+        "lines": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "incident.created": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.updated": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.acknowledged": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.resolved": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.reopened": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.escalated": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.reminder": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "alert.added": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "alert.recovered": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.unacknowledged": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.flapping": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.regrouped": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.merged": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.split": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.assignee_changed": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.ticket_created": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "silence.started": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "silence.updated": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "silence.ended": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            "incident.repeated": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          },
+          "required": []
+        },
+        "stub": {
+          "$ref": "#/$defs/NotificationStub"
+        },
+        "fallbacks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "edit": {
+              "type": "string",
+              "enum": [
+                "post",
+                "none"
+              ]
+            },
+            "thread": {
+              "type": "string",
+              "enum": [
+                "post",
+                "none"
+              ]
+            },
+            "repost": {
+              "type": "string",
+              "enum": [
+                "post",
+                "none"
+              ]
+            }
+          },
+          "required": []
+        }
+      },
+      "required": [],
+      "x-change": "next notification; validate before atomic apply"
+    },
+    "NotificationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "team",
+            "route",
+            "family",
+            "level"
+          ]
+        },
+        "team_id": {
+          "$ref": "#/$defs/TeamOrUnassigned"
+        },
+        "route_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "family_ref": {
+          "$ref": "#/$defs/Id"
+        },
+        "level_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "settings": {
+          "$ref": "#/$defs/NotificationSettings"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "settings"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "scope": {
+              "const": "team"
+            }
+          },
+          "required": [
+            "team_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "route_ref"
+                ]
+              },
+              {
+                "required": [
+                  "family_ref"
+                ]
+              },
+              {
+                "required": [
+                  "level_id"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "scope": {
+              "const": "route"
+            }
+          },
+          "required": [
+            "team_id",
+            "route_ref"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "family_ref"
+                ]
+              },
+              {
+                "required": [
+                  "level_id"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "scope": {
+              "const": "family"
+            }
+          },
+          "required": [
+            "team_id",
+            "route_ref",
+            "family_ref"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "level_id"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "scope": {
+              "const": "level"
+            }
+          },
+          "required": [
+            "team_id",
+            "route_ref",
+            "family_ref",
+            "level_id"
+          ]
+        }
+      ],
+      "x-change": "next notification; validate before atomic apply"
+    }
+  }
+}

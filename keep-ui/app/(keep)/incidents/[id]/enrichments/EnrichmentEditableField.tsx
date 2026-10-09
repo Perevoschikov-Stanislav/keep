@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { xor } from "lodash";
 import { Badge, Icon, TextInput } from "@tremor/react";
 import { Button } from "@/components/ui";
-import { FiSave, FiTrash2, FiX } from "react-icons/fi";
+import { FiExternalLink, FiLock, FiSave, FiTrash2, FiX } from "react-icons/fi";
 import { MdModeEdit } from "react-icons/md";
 
 interface EnrichmentEditableFieldProps {
@@ -12,7 +12,83 @@ interface EnrichmentEditableFieldProps {
   onUpdate: (fieldName: string, newValue: string | string[]) => void;
   onDelete?: (fieldName: string) => void;
   children?: React.ReactNode;
+  readOnly?: boolean;
+  isNameReadOnly?: (fieldName: string) => boolean;
 }
+
+const isUrl = (str: string): boolean => {
+  try {
+    const url = new URL(str);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const renderStringWithLinks = (
+  text: string,
+  field?: string,
+  onBadgeClick?: (val: string) => void
+) => {
+  const trimmed = text.trim();
+  if (isUrl(trimmed)) {
+    return (
+      <a
+        href={trimmed}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-orange-50 text-orange-700 hover:bg-orange-100 hover:text-orange-900 border border-orange-200 transition-colors cursor-pointer"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FiExternalLink className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+        <span className="truncate max-w-xs">{trimmed}</span>
+      </a>
+    );
+  }
+
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  if (urlRegex.test(trimmed)) {
+    const parts = trimmed.split(urlRegex);
+    return (
+      <span className="text-sm text-gray-800 break-words">
+        {parts.map((part, i) => {
+          if (isUrl(part)) {
+            return (
+              <a
+                key={i}
+                href={part}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-orange-600 hover:text-orange-800 hover:underline font-medium mx-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {part}
+                <FiExternalLink className="w-3 h-3 inline flex-shrink-0" />
+              </a>
+            );
+          }
+          return <span key={i}>{part}</span>;
+        })}
+      </span>
+    );
+  }
+
+  if (onBadgeClick && field) {
+    return (
+      <Badge
+        key={trimmed}
+        color="orange"
+        size="sm"
+        className="cursor-pointer"
+        onClick={() => onBadgeClick(trimmed)}
+      >
+        {trimmed}
+      </Badge>
+    );
+  }
+
+  return <span className="text-sm text-gray-800 break-words">{trimmed}</span>;
+};
 
 export const EnrichmentEditableField = ({
   name,
@@ -20,6 +96,8 @@ export const EnrichmentEditableField = ({
   onUpdate,
   onDelete,
   children,
+  readOnly = false,
+  isNameReadOnly,
 }: EnrichmentEditableFieldProps) => {
   const router = useRouter();
 
@@ -32,6 +110,10 @@ export const EnrichmentEditableField = ({
   const [valueError, setValueError] = useState<boolean>(false);
 
   const handleSave = async () => {
+    if (readOnly || isNameReadOnly?.(fieldName.trim())) {
+      setFieldNameError(true);
+      return;
+    }
     const newValue = Array.isArray(value)
       ? stringedValue.split(",").map((s) => s.trim())
       : stringedValue.toString().trim();
@@ -74,7 +156,10 @@ export const EnrichmentEditableField = ({
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFieldNameError(e.target.value === "");
+    setFieldNameError(
+      e.target.value.trim() === "" ||
+        !!isNameReadOnly?.(e.target.value.trim())
+    );
     setFieldName(e.target.value);
   };
 
@@ -90,6 +175,7 @@ export const EnrichmentEditableField = ({
           <TextInput
             value={fieldName}
             error={fieldNameError}
+            errorMessage="Enter an editable field name"
             onChange={handleNameChange}
             placeholder="Add name"
           />
@@ -103,7 +189,11 @@ export const EnrichmentEditableField = ({
         <Button
           className="leading-none p-2 rounded-md"
           variant="secondary"
-          disabled={!(fieldName && stringedValue)}
+          disabled={
+            !(fieldName.trim() && stringedValue) ||
+            fieldNameError ||
+            !!isNameReadOnly?.(fieldName.trim())
+          }
           tooltip="Save"
           icon={() => (
             <Icon icon={FiSave} className={`w-4 h-4 text-orange-500`} />
@@ -129,31 +219,35 @@ export const EnrichmentEditableField = ({
             ? children
             : value != null && value.length > 0
               ? !Array.isArray(value)
-                ? value
+                ? renderStringWithLinks(
+                    value.toString(),
+                    fieldName,
+                    (v) => filterBy(fieldName, v)
+                  )
                 : value.map((item: string) => (
-                    <Badge
-                      key={item}
-                      color="orange"
-                      size="sm"
-                      className="cursor-pointer"
-                      onClick={() => filterBy(fieldName, item)}
-                    >
-                      {item}
-                    </Badge>
+                    <React.Fragment key={item}>
+                      {renderStringWithLinks(
+                        item,
+                        fieldName,
+                        (v) => filterBy(fieldName, v)
+                      )}
+                    </React.Fragment>
                   ))
               : `No data for ${name}`}
 
-          <Button
-            variant="light"
-            className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
-            tooltip="Edit"
-            onClick={() => setEditMode(true)}
-            icon={() => (
-              <Icon icon={MdModeEdit} className={`w-4 h-4 text-orange-500`} />
-            )}
-          />
+          {!readOnly && (
+            <Button
+              variant="light"
+              className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
+              tooltip="Edit"
+              onClick={() => setEditMode(true)}
+              icon={() => (
+                <Icon icon={MdModeEdit} className={`w-4 h-4 text-orange-500`} />
+              )}
+            />
+          )}
 
-          {onDelete && (
+          {!readOnly && onDelete && (
             <Button
               variant="light"
               className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
@@ -163,6 +257,15 @@ export const EnrichmentEditableField = ({
                 <Icon icon={FiTrash2} className={`w-4 h-4 text-red-500`} />
               )}
             />
+          )}
+
+          {readOnly && (
+            <span
+              className="text-gray-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+              title="Protected field (read-only)"
+            >
+              <FiLock className="w-3.5 h-3.5 inline" />
+            </span>
           )}
         </div>
       ) : (

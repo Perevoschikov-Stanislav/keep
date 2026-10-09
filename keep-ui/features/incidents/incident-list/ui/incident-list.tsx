@@ -1,6 +1,8 @@
 "use client";
 import { Card, Title, Subtitle, Button, Badge } from "@tremor/react";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { useIncidentViews } from "@/entities/incidents/model/useIncidentViews";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 import type {
   IncidentDto,
   PaginatedIncidentsDto,
@@ -35,7 +37,15 @@ import {
   IncidentsNotFoundPlaceholder,
 } from "./incidents-not-found";
 import { v4 as uuidV4 } from "uuid";
-import { FacetsConfig } from "@/features/filter/models";
+import { FacetsConfig, FacetDto } from "@/features/filter/models";
+import { splitFacetValues } from "@/features/filter/store/use-query-params/split-facet-values";
+import {
+  loadSavedFacetsState,
+  buildCelFromSavedFilters,
+  clearSavedFacetsState,
+  getFilterStorageKey,
+} from "@/features/filter/store/filter-persistence";
+import { useSearchParams } from "next/navigation";
 import EnhancedDateRangePicker, {
   TimeFrame,
 } from "@/components/ui/DateRangePicker";
@@ -46,6 +56,7 @@ import {
   DEFAULT_INCIDENTS_CHECKED_OPTIONS,
 } from "@/entities/incidents/model/models";
 import { DynamicImageProviderIcon } from "@/components/ui";
+import { useConfig } from "@/utils/hooks/useConfig";
 import { useIncidentsTableData } from "./useIncidentsTableData";
 import EnhancedDateRangePickerV2, {
   AllTimeFrame,
@@ -58,12 +69,97 @@ const AssigneeLabel = ({ email }: { email: string }) => {
   return user ? user.name : email;
 };
 
+function getInitialFilterCel(
+  searchParams: URLSearchParams | null,
+  initialFacets?: FacetDto[],
+  defaultStatuses: string[] = DEFAULT_INCIDENTS_CHECKED_OPTIONS,
+  viewId: string = "all"
+): string {
+  const parts: string[] = [];
+
+  const hasFacetParams =
+    searchParams &&
+    Array.from(searchParams.keys()).some((k) => k.startsWith("facet_"));
+
+  if (hasFacetParams) {
+    const statusParam = searchParams!.get("facet_status");
+    if (statusParam) {
+      const values = splitFacetValues(statusParam).map(
+        (v) => `'${v.replace(/^'|'$/g, "")}'`
+      );
+      if (values.length) {
+        parts.push(`(status in [${values.join(", ")}])`);
+      }
+    } else {
+      parts.push(
+        `(status in [${defaultStatuses.map((opt) => "'" + opt + "'").join(", ")}])`
+      );
+    }
+
+    if (initialFacets) {
+      initialFacets.forEach((facet) => {
+        if (facet.property_path === "status") return;
+        const paramName = `facet_${facet.property_path.replace(/\./g, "_")}`;
+        const paramValue = searchParams!.get(paramName);
+        if (paramValue) {
+          const values = splitFacetValues(paramValue).map(
+            (v) => `'${v.replace(/^'|'$/g, "")}'`
+          );
+          if (values.length) {
+            parts.push(`(${facet.property_path} in [${values.join(", ")}])`);
+          }
+        }
+      });
+    }
+  } else {
+    // Check localStorage for saved filters for this view (with legacy fallback for "all")
+    const storageKey = getFilterStorageKey("incidents", null, viewId);
+    const savedState =
+      loadSavedFacetsState(storageKey) ||
+      (viewId === "all" ? loadSavedFacetsState("keep-filters-incidents") : null);
+
+    if (
+      savedState &&
+      typeof savedState === "object" &&
+      Object.keys(savedState).length > 0
+    ) {
+      const cel = buildCelFromSavedFilters(
+        savedState,
+        initialFacets,
+        defaultStatuses
+      );
+      if (cel) {
+        return cel;
+      }
+    }
+
+    parts.push(
+      `(status in [${defaultStatuses.map((opt) => "'" + opt + "'").join(", ")}])`
+    );
+  }
+
+  return parts.join(" && ");
+}
+
 export function IncidentList({
   initialFacetsData,
 }: {
   initialData?: PaginatedIncidentsDto;
   initialFacetsData?: InitialFacetsData;
 }) {
+  const searchParams = useSearchParams();
+  const { views, isLoading: viewsLoading, error: viewsError } = useIncidentViews();
+  const viewId = searchParams?.get("view") || "all";
+  const selectedView = views.find((view) => view.id === viewId);
+  const { can } = useUserPermissions();
+  const { data: config } = useConfig();
+  const defaultIncidentStatuses = useMemo(() => {
+    return (
+      config?.DEFAULT_INCIDENTS_STATUS_FILTER ||
+      DEFAULT_INCIDENTS_CHECKED_OPTIONS
+    );
+  }, [config?.DEFAULT_INCIDENTS_STATUS_FILTER]);
+
   const [incidentsPagination, setIncidentsPagination] =
     useState<PaginationState>({
       limit: DEFAULT_INCIDENTS_PAGE_SIZE,
@@ -74,7 +170,25 @@ export function IncidentList({
     DEFAULT_INCIDENTS_SORTING,
   ]);
 
-  const [filterCel, setFilterCel] = useState<string | null>(null);
+  const [filterCel, setFilterCel] = useState<string | null>(() =>
+    getInitialFilterCel(
+      searchParams ? new URLSearchParams(searchParams.toString()) : null,
+      initialFacetsData?.facets,
+      defaultIncidentStatuses,
+      viewId
+    )
+  );
+  useEffect(() => {
+    setIncidentsPagination({ limit: DEFAULT_INCIDENTS_PAGE_SIZE, offset: 0 });
+    setFilterCel(
+      getInitialFilterCel(
+        searchParams ? new URLSearchParams(searchParams.toString()) : null,
+        initialFacetsData?.facets,
+        defaultIncidentStatuses,
+        viewId
+      )
+    );
+  }, [viewId, defaultIncidentStatuses, initialFacetsData?.facets]);
 
   const [dateRange, setDateRange] = useTimeframeState({
     enableQueryParams: true,
@@ -98,7 +212,8 @@ export function IncidentList({
     limit: incidentsPagination.limit,
     offset: incidentsPagination.offset,
     sorting: incidentsSorting[0],
-    filterCel: filterCel,
+    filterCel: viewsLoading || !selectedView ? null : filterCel,
+    viewCel: selectedView?.cel,
     timeFrame: dateRange,
   });
 
@@ -130,7 +245,7 @@ export function IncidentList({
   };
 
   const facetsConfig: FacetsConfig = useMemo(() => {
-    return {
+    const configResult: FacetsConfig = {
       ["Severity"]: {
         canHitEmptyState: false,
         renderOptionLabel: (facetOption) => {
@@ -151,7 +266,7 @@ export function IncidentList({
           reverseSeverityMapping[facetOption.value] || 100, // if status is not in the mapping, it should be at the end
       },
       ["Status"]: {
-        checkedByDefaultOptionValues: DEFAULT_INCIDENTS_CHECKED_OPTIONS,
+        checkedByDefaultOptionValues: defaultIncidentStatuses,
         renderOptionIcon: (facetOption) => (
           <Icon
             icon={getStatusIcon(facetOption.display_name)}
@@ -216,9 +331,24 @@ export function IncidentList({
             : "No",
       },
     };
-  }, []);
+
+    const openFacets = config?.DEFAULT_OPEN_FACETS || [];
+    openFacets.forEach((facetName) => {
+      if (!configResult[facetName]) {
+        configResult[facetName] = {};
+      }
+      configResult[facetName].isOpenByDefault = true;
+    });
+
+    return configResult;
+  }, [defaultIncidentStatuses, config?.DEFAULT_OPEN_FACETS]);
 
   const handleClearFilters = () => {
+    const storageKey = getFilterStorageKey("incidents", null, viewId);
+    clearSavedFacetsState(storageKey);
+    if (viewId === "all") {
+      clearSavedFacetsState("keep-filters-incidents");
+    }
     setDateRange({
       type: "all-time",
       isPaused: false,
@@ -238,7 +368,7 @@ export function IncidentList({
     if (incidents && incidents.items.length > 0) {
       return (
         <IncidentsTable
-          filterCel={facetsCel}
+          filterCel={facetsCel || ""}
           incidents={incidents}
           pagination={incidentsPagination}
           setPagination={setIncidentsPagination}
@@ -311,8 +441,8 @@ export function IncidentList({
         <div className="h-full flex flex-col gap-5">
           <div className="flex justify-between items-center">
             <div>
-              <PageTitle>Incidents</PageTitle>
-              <PageSubtitle>Group alerts into incidents</PageSubtitle>
+              <PageTitle>Incidents · {selectedView?.name || viewId}</PageTitle>
+              <PageSubtitle>{can("update:incident") ? "Group alerts into incidents" : "Read only: your role does not allow changes"}</PageSubtitle>
             </div>
 
             <div className="flex gap-2">
@@ -323,18 +453,22 @@ export function IncidentList({
                 icon={PlusIcon}
                 variant="primary"
                 onClick={() => setIsFormOpen(true)}
+                disabled={!can("write:incident")}
+                title={!can("write:incident") ? "Read only: creating incidents requires admin" : undefined}
               >
                 Create Incident
               </Button>
             </div>
           </div>
           <div>
-            {incidentsError ? (
-              <IncidentListError incidentError={incidentsError} />
+            {incidentsError || viewsError || (!viewsLoading && !selectedView) ? (
+              <IncidentListError incidentError={incidentsError || viewsError || new Error("Unknown incident view")} />
             ) : null}
-            {incidentsError ? null : (
+            {incidentsError || viewsError || (!viewsLoading && !selectedView) ? null : (
               <div className="flex flex-row gap-5">
                 <FacetsPanelServerSide
+                  key={`incidents-${viewId}`}
+                  panelId={`incidents-${viewId}`}
                   className="mt-14"
                   entityName={"incidents"}
                   facetsConfig={facetsConfig}

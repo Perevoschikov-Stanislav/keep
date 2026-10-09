@@ -7,6 +7,7 @@ import * as Sentry from "@sentry/nextjs";
 import { signOut as signOutClient } from "next-auth/react";
 import { GuestSession } from "@/types/auth";
 import { AuthType } from "@/utils/authenticationType";
+import { OAUTH2PROXY_SIGN_OUT_URL } from "@/shared/lib/oauth2proxy-logout";
 
 const READ_ONLY_ALLOWED_METHODS = ["GET", "OPTIONS"];
 const READ_ONLY_ALWAYS_ALLOWED_URLS = [
@@ -47,8 +48,12 @@ export class ApiClient {
     if (this.session.accessToken === "unauthenticated") {
       return this.additionalHeaders;
     }
+    const authHeaders =
+      this.config?.AUTH_TYPE === AuthType.OAUTH2PROXY
+        ? {}
+        : { Authorization: `Bearer ${this.session.accessToken}` };
     return {
-      Authorization: `Bearer ${this.session.accessToken}`,
+      ...authHeaders,
       "ngrok-skip-browser-warning": true,
       ...this.additionalHeaders,
     };
@@ -69,7 +74,7 @@ export class ApiClient {
     return baseUrl;
   }
 
-  async handleResponse(response: Response, url: string) {
+  async handleResponse(response: Response, url: string, method = "GET") {
     // Ensure that the fetch was successful
     if (!response.ok) {
       // if the response has detail field, throw the detail field
@@ -80,7 +85,8 @@ export class ApiClient {
           if (!this.isServer) {
             // For OAUTH2PROXY auth, redirect to oauth2-proxy's sign_out endpoint
             if (this.config?.AUTH_TYPE === AuthType.OAUTH2PROXY) {
-              window.location.href = "/oauth2/sign_out";
+              await signOutClient({ redirect: false });
+              window.location.href = OAUTH2PROXY_SIGN_OUT_URL;
             } else {
               await signOutClient();
             }
@@ -93,11 +99,14 @@ export class ApiClient {
             response.status
           );
         }
-        if (response.status === 403 && data.detail.includes("Read only")) {
+        if (response.status === 403 && (
+          !READ_ONLY_ALLOWED_METHODS.includes(method) ||
+          (typeof data.detail === "string" && /read.only/i.test(data.detail))
+        )) {
           throw new KeepApiReadOnlyError(
-            "Application is in read-only mode",
+            "Read only: you do not have permission to change this object",
             url,
-            "The application is currently in read-only mode. Modifications are not allowed.",
+            "Changes require an allowed role and membership in the object's team.",
             { readOnly: true },
             403
           );
@@ -169,7 +178,7 @@ export class ApiClient {
         ...requestInit.headers,
       },
     });
-    return this.handleResponse(response, url);
+    return this.handleResponse(response, url, requestInit.method);
   }
 
   async get<T = any>(url: string, requestInit: RequestInit = {}) {

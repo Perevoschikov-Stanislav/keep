@@ -21,6 +21,7 @@ import { useSession } from "next-auth/react";
 import dynamic from "next/dynamic";
 import { IncidentSeveritySelect } from "@/features/incidents/change-incident-severity";
 import { Severity } from "@/entities/incidents/model/models";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 
@@ -47,6 +48,8 @@ export function CreateOrUpdateIncidentForm({
     useState<string>("all");
   const { data: users = [] } = useUsers();
   const { addIncident, updateIncident } = useIncidentActions();
+  const { permissions } = useUserPermissions();
+  const canChangePolicy = !incidentToEdit || (permissions?.role === "admin" && !incidentToEdit.correlation);
 
     // Sort users alphabetically
   const sortedUsers = [...users].sort((a, b) =>
@@ -59,9 +62,9 @@ export function CreateOrUpdateIncidentForm({
 
   useEffect(() => {
     if (incidentToEdit) {
-      setIncidentName(getIncidentName(incidentToEdit));
+      setIncidentName(incidentToEdit.user_generated_name ?? "");
       setIncidentUserSummary(
-        incidentToEdit.user_summary ?? incidentToEdit.generated_summary ?? ""
+        incidentToEdit.user_summary ?? ""
       );
       setIncidentAssignee(incidentToEdit.assignee ?? "");
       setResolveOnAlertsResolved(incidentToEdit.resolve_on ?? "all");
@@ -90,9 +93,10 @@ export function CreateOrUpdateIncidentForm({
           user_generated_name: incidentName,
           user_summary: incidentUserSummary,
           assignee: incidentAssignee,
-          resolve_on: resolveOnAlertsResolved,
-          same_incident_in_the_past_id:
-            incidentToEdit!.same_incident_in_the_past_id,
+          ...(canChangePolicy ? {
+            resolve_on: resolveOnAlertsResolved,
+            same_incident_in_the_past_id: incidentToEdit!.same_incident_in_the_past_id,
+          } : {}),
         },
         false
       );
@@ -159,8 +163,8 @@ export function CreateOrUpdateIncidentForm({
           Name<span className="text-red-500 text-xs">*</span>
         </Text>
         <TextInput
-          placeholder="Incident Name"
-          required={true}
+          placeholder={incidentToEdit ? getIncidentName(incidentToEdit) : "Incident Name"}
+          required={!editMode}
           value={incidentName}
           onValueChange={setIncidentName}
         />
@@ -206,6 +210,7 @@ export function CreateOrUpdateIncidentForm({
             id="resolve-on-alerts"
             name="resolve-on-alerts"
             color="orange"
+            disabled={!canChangePolicy}
             checked={resolveOnAlertsResolved === "all_resolved"}
             onChange={() =>
               setResolveOnAlertsResolved(

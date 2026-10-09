@@ -195,6 +195,7 @@ export const YamlStepOrActionSchema = z
     name: z.string(),
     provider: YamlProviderSchema,
     id: z.string().optional(),
+    notification: z.boolean().optional(),
     // todo: check `if` is valid
     if: z.string().optional(),
     vars: z.record(z.string(), z.string()).optional(),

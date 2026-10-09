@@ -6,6 +6,7 @@ import celpy
 from sqlmodel import Session
 
 from keep.api.consts import KEEP_CORRELATION_ENABLED, MAINTENANCE_WINDOW_ALERT_STRATEGY
+from keep.api.core.config import config
 from opentelemetry import trace
 from keep.api.core.db import (
     add_audit,
@@ -26,6 +27,7 @@ from keep.api.models.db.maintenance_window import MaintenanceWindowRule
 from keep.api.tasks.notification_cache import get_notification_cache
 from keep.api.utils.cel_utils import preprocess_cel_expression
 from keep.rulesengine.rulesengine import RulesEngine
+from keep.identitymanager.team_policy import is_team_scoping_active
 from keep.workflowmanager.workflowmanager import WorkflowManager
 
 tracer = trace.get_tracer(__name__)
@@ -177,6 +179,8 @@ class MaintenanceWindowsBl:
             logger (logging.Logger): The logger to use.
             session (Session | None): The SQLAlchemy session to use. If None, a new session will be created.
         """
+        if not config("KEEP_MAINTENANCE_DESTRUCTIVE_DROP", default=True, cast=bool):
+            return
         logger.info("Starting recover strategy for maintenance windows review.")
         env = celpy.Environment()
         _owns_session = session is None
@@ -308,7 +312,7 @@ class MaintenanceWindowsBl:
                                     f"private-{tenant}",
                                     "poll-presets",
                                     json.dumps(
-                                        [p.name.lower() for p in presets_do_update], default=str
+                                        [] if is_team_scoping_active() else [p.name.lower() for p in presets_do_update], default=str
                                     ),
                                 )
                             except Exception:

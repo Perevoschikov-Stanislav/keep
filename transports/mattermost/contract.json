@@ -1,0 +1,768 @@
+{
+  "Notification": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "Notification": {
+        "type": "object",
+        "additionalProperties": false,
+        "x-change": "rebuild before each ordinary send/retry; silence gate on canonical data",
+        "required": [
+          "schema_version",
+          "notification_id",
+          "event_id",
+          "event_type",
+          "occurred_at",
+          "tenant_id",
+          "team_id",
+          "incident_id",
+          "incident_revision",
+          "episode",
+          "policy_digest",
+          "correlation_id",
+          "destination_ref",
+          "transport_ref",
+          "keep_url",
+          "title",
+          "description",
+          "fields",
+          "links",
+          "contact_refs",
+          "actions"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "description": "Wire version, aligned with silence v1."
+          },
+          "notification_id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "event_id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "incident.created",
+              "incident.updated",
+              "incident.acknowledged",
+              "incident.resolved",
+              "incident.reopened",
+              "incident.escalated",
+              "incident.reminder",
+              "alert.added",
+              "alert.recovered",
+              "incident.unacknowledged",
+              "incident.flapping",
+              "incident.regrouped",
+              "incident.merged",
+              "incident.split",
+              "incident.assignee_changed",
+              "incident.ticket_created",
+              "silence.started",
+              "silence.updated",
+              "silence.ended",
+              "incident.repeated"
+            ],
+            "description": "Already-selected notification type."
+          },
+          "occurred_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "tenant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Server-assigned tenant."
+          },
+          "team_id": {
+            "$ref": "#/$defs/TeamOrUnassigned"
+          },
+          "incident_id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "incident_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "description": "Canonical state revision."
+          },
+          "episode": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "Persistent episode number."
+          },
+          "policy_digest": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Applied complete bundle digest.",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "correlation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512,
+            "description": "Trace correlation; never authorization."
+          },
+          "destination_ref": {
+            "$ref": "#/$defs/Id"
+          },
+          "transport_ref": {
+            "$ref": "#/$defs/Id"
+          },
+          "keep_url": {
+            "$ref": "#/$defs/LinkUrl"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Ready canonical title."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Ready description projected from uncovered data only."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "default": null,
+            "description": "Ready configured color; null means no color. Adapter does not infer severity."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ReadyField"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "description": "Ready fields in final order."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ReadyLink"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "description": "Rendered links: templates must already be expanded."
+          },
+          "contact_refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Id"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "description": "Chosen contacts; address resolution belongs to adapter.",
+            "uniqueItems": true
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ReadyAction"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "description": "Operator must still prove identity."
+          },
+          "projection_revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "Monotonic rendered projection version; incident_revision is the command CAS version.",
+            "default": 1
+          },
+          "footer": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "maxItems": 32
+          }
+        }
+      },
+      "ReadyAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "x-change": "verified command or Keep confirmation; never actor from context",
+        "required": [
+          "command",
+          "label",
+          "keep_url"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "ack",
+              "unack",
+              "resolve",
+              "assign",
+              "silence",
+              "ticket"
+            ],
+            "description": "Canonical Keep command."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Ready action label."
+          },
+          "keep_url": {
+            "$ref": "#/$defs/LinkUrl"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "one_click",
+              "confirm_in_keep"
+            ]
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "default",
+              "primary",
+              "success",
+              "warning",
+              "danger"
+            ]
+          }
+        }
+      },
+      "LinkUrl": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048,
+        "description": "Rendered HTTP(S) URL; public query parameters/fragments are allowed, credentials are forbidden.",
+        "pattern": "^https?://[^\\s]+$"
+      },
+      "Id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Stable logical ID, scoped by tenant and resource kind.",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+      },
+      "ReadyLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "x-change": "rendered in Keep before delivery; adapter never expands templates",
+        "required": [
+          "label",
+          "url"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Ready link label."
+          },
+          "url": {
+            "$ref": "#/$defs/LinkUrl"
+          }
+        }
+      },
+      "ReadyField": {
+        "type": "object",
+        "additionalProperties": false,
+        "x-change": "projection from latest permitted canonical state",
+        "required": [
+          "label",
+          "value"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Ready display label."
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ],
+            "description": "Ready sanitized value; no transport derivation."
+          }
+        }
+      },
+      "Uuid": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Canonical UUID."
+      },
+      "TeamOrUnassigned": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/TeamId"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Null selects only unassigned data, never all teams."
+      },
+      "TeamId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "description": "Existing TeamPolicy ID; never inferred from a destination."
+      },
+      "UtcTime": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+        "description": "UTC RFC3339 time with Z; server time controls silence coverage."
+      }
+    },
+    "$ref": "#/$defs/Notification"
+  },
+  "SilenceEvent": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+      "LifecycleEvent": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "event_type",
+          "occurred_at",
+          "effective_at",
+          "silence_id",
+          "revision",
+          "tenant_id",
+          "team_id",
+          "origin",
+          "correlation_id",
+          "client_request_id",
+          "actor",
+          "reason",
+          "resource"
+        ],
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/Version"
+          },
+          "event_id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "event_type": {
+            "enum": [
+              "silence.created",
+              "silence.updated",
+              "silence.activated",
+              "silence.cancelled",
+              "silence.expired"
+            ]
+          },
+          "occurred_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "effective_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "silence_id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "revision": {
+            "$ref": "#/$defs/Revision"
+          },
+          "tenant_id": {
+            "$ref": "#/$defs/Id"
+          },
+          "team_id": {
+            "$ref": "#/$defs/TeamId"
+          },
+          "origin": {
+            "$ref": "#/$defs/Id"
+          },
+          "correlation_id": {
+            "$ref": "#/$defs/CorrelationId"
+          },
+          "client_request_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor": {
+            "$ref": "#/$defs/Actor"
+          },
+          "reason": {
+            "$ref": "#/$defs/Comment"
+          },
+          "resource": {
+            "$ref": "#/$defs/Silence"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "event_type": {
+                  "enum": [
+                    "silence.activated",
+                    "silence.expired"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "client_request_id": {
+                  "type": "null"
+                },
+                "actor": {
+                  "properties": {
+                    "kind": {
+                      "const": "service"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "event_type": {
+                  "enum": [
+                    "silence.created",
+                    "silence.updated",
+                    "silence.cancelled"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "client_request_id": {
+                  "$ref": "#/$defs/Uuid"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Uuid": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "Silence": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "id",
+          "revision",
+          "tenant_id",
+          "team_id",
+          "selector",
+          "starts_at",
+          "ends_at",
+          "comment",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "cancelled_at",
+          "origin",
+          "correlation_id",
+          "state",
+          "evaluated_at"
+        ],
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/Version"
+          },
+          "id": {
+            "$ref": "#/$defs/Uuid"
+          },
+          "revision": {
+            "$ref": "#/$defs/Revision"
+          },
+          "tenant_id": {
+            "$ref": "#/$defs/Id"
+          },
+          "team_id": {
+            "$ref": "#/$defs/TeamId"
+          },
+          "selector": {
+            "$ref": "#/$defs/Selector"
+          },
+          "starts_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "ends_at": {
+            "$ref": "#/$defs/NullableTime"
+          },
+          "comment": {
+            "$ref": "#/$defs/Comment"
+          },
+          "created_by": {
+            "$ref": "#/$defs/Actor"
+          },
+          "updated_by": {
+            "$ref": "#/$defs/Actor"
+          },
+          "created_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "updated_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "cancelled_at": {
+            "$ref": "#/$defs/NullableTime"
+          },
+          "origin": {
+            "$ref": "#/$defs/Id"
+          },
+          "correlation_id": {
+            "$ref": "#/$defs/CorrelationId"
+          },
+          "state": {
+            "$ref": "#/$defs/State"
+          },
+          "evaluated_at": {
+            "$ref": "#/$defs/UtcTime"
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "synchronization": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source_id",
+                "state",
+                "reason"
+              ],
+              "properties": {
+                "source_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "cancelled"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "cancelled_at": {
+                  "$ref": "#/$defs/UtcTime"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "cancelled_at": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UtcTime": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+      },
+      "State": {
+        "enum": [
+          "scheduled",
+          "active",
+          "expired",
+          "cancelled"
+        ]
+      },
+      "CorrelationId": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "Id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "NullableTime": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/UtcTime"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "Actor": {
+        "type": "object",
+        "required": [
+          "kind",
+          "subject",
+          "issuer",
+          "display_name"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "user",
+              "service"
+            ]
+          },
+          "subject": {
+            "$ref": "#/$defs/Id"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 256
+          }
+        }
+      },
+      "Comment": {
+        "type": "string",
+        "maxLength": 4000
+      },
+      "Selector": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "fingerprints"
+            ],
+            "properties": {
+              "kind": {
+                "const": "alert"
+              },
+              "fingerprints": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1000,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "incident_ids"
+            ],
+            "properties": {
+              "kind": {
+                "const": "incident"
+              },
+              "incident_ids": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1000,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/$defs/Uuid"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "cel"
+            ],
+            "properties": {
+              "kind": {
+                "const": "filter"
+              },
+              "cel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              }
+            }
+          }
+        ]
+      },
+      "TeamId": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "Revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "Version": {
+        "const": 1
+      }
+    },
+    "$ref": "#/$defs/LifecycleEvent"
+  }
+}

@@ -2,6 +2,7 @@ import Pusher, { Options as PusherOptions } from "pusher-js";
 import { useApiUrl, useConfig } from "./useConfig";
 import { useHydratedSession as useSession } from "@/shared/lib/hooks/useHydratedSession";
 import { useCallback } from "react";
+import { AuthType } from "@/utils/authenticationType";
 
 let PUSHER: Pusher | null = null;
 
@@ -52,9 +53,10 @@ export const useWebsocket = () => {
         channelAuthorization: {
           transport: "ajax",
           endpoint: `${apiUrl}/pusher/auth`,
-          headers: {
-            Authorization: `Bearer ${session?.accessToken!}`,
-          },
+          headers:
+            configData.AUTH_TYPE === AuthType.OAUTH2PROXY
+              ? {}
+              : { Authorization: `Bearer ${session?.accessToken!}` },
         },
       };
       PUSHER = new Pusher(configData.PUSHER_APP_KEY, pusherOptions);

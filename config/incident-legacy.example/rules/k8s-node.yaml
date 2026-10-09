@@ -1,0 +1,17 @@
+ruleName: k8s-node
+sqlQuery:
+  sql: family == "k8s-node" && has(labels.node)
+  params: {}
+celQuery: family == "k8s-node" && has(labels.node)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- node
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · node {{ alert.node }}: {{ alert.alertname
+  }}'
+requireApprove: false
+threshold: 1

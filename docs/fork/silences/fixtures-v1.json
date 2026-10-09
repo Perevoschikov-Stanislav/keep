@@ -1,0 +1,2762 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic messages and expected service scenarios. No credentials; scenarios are acceptance vectors, not results of implemented silence runtime.",
+  "messages": {
+    "rule-single": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-overlap": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Independent investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-forever": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000003",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": null,
+        "comment": "Until explicitly cancelled",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-incident": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000004",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "incident",
+          "incident_ids": [
+            "00000001-1111-4111-8111-111111111111"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "mm-bridge",
+        "correlation_id": "fixture-post-1",
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-group": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000005",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "incident",
+          "incident_ids": [
+            "00000001-1111-4111-8111-111111111111",
+            "00000002-1111-4111-8111-111111111111"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "mm-bridge",
+        "correlation_id": "fixture-post-group",
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-filter": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000006",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "filter",
+          "cel": "service == 'database'"
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-scheduled": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000007",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T11:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "scheduled",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-unassigned": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000008",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": null,
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "unknown:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-admin-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Admin"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-admin-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Admin"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "rule-cpu": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000009",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:cpu-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:00:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:00:00Z"
+      }
+    },
+    "create-alert": {
+      "schema": "CreateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000001",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": null,
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "correlation_id": null
+      },
+      "method": "POST",
+      "path": "/silences"
+    },
+    "create-filter": {
+      "schema": "CreateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000005",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "filter",
+          "cel": "service == 'database'"
+        },
+        "starts_at": null,
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "correlation_id": null
+      },
+      "method": "POST",
+      "path": "/silences"
+    },
+    "create-group-mm": {
+      "schema": "CreateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000004",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "incident",
+          "incident_ids": [
+            "00000001-1111-4111-8111-111111111111",
+            "00000002-1111-4111-8111-111111111111"
+          ]
+        },
+        "starts_at": null,
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "correlation_id": "fixture-post-group"
+      },
+      "method": "POST",
+      "path": "/integrations/silences"
+    },
+    "create-invalid-time": {
+      "schema": "CreateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000006",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T11:00:00Z",
+        "ends_at": "2026-10-04T10:00:00Z",
+        "comment": "Disk investigation",
+        "correlation_id": null
+      },
+      "method": "POST",
+      "path": "/silences"
+    },
+    "create-foreign-group": {
+      "schema": "CreateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000007",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "incident",
+          "incident_ids": [
+            "00000001-1111-4111-8111-111111111111",
+            "00000004-1111-4111-8111-111111111111"
+          ]
+        },
+        "starts_at": null,
+        "ends_at": "2026-10-04T11:00:00Z",
+        "comment": "Disk investigation",
+        "correlation_id": null
+      },
+      "method": "POST",
+      "path": "/silences"
+    },
+    "extend-alert": {
+      "schema": "UpdateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000002",
+        "expected_revision": 1,
+        "changes": {
+          "ends_at": "2026-10-04T12:00:00Z"
+        },
+        "correlation_id": null
+      },
+      "method": "PATCH",
+      "path": "/silences/10000000-0000-4000-8000-000000000001"
+    },
+    "update-stale": {
+      "schema": "UpdateCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000009",
+        "expected_revision": 1,
+        "changes": {
+          "comment": "Concurrent edit"
+        },
+        "correlation_id": null
+      },
+      "method": "PATCH",
+      "path": "/silences/10000000-0000-4000-8000-000000000001"
+    },
+    "cancel-alert": {
+      "schema": "CancelCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000003",
+        "expected_revision": 2,
+        "reason": "Investigation complete",
+        "correlation_id": "fixture-post-1"
+      },
+      "method": "POST",
+      "path": "/integrations/silences/10000000-0000-4000-8000-000000000001/cancel"
+    },
+    "cancel-overlap": {
+      "schema": "CancelCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000008",
+        "expected_revision": 1,
+        "reason": "Investigation complete",
+        "correlation_id": "fixture-post-1"
+      },
+      "method": "POST",
+      "path": "/silences/10000000-0000-4000-8000-000000000002/cancel"
+    },
+    "rule-extended": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000001",
+        "revision": 2,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:20:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T10:20:00Z"
+      }
+    },
+    "rule-cancelled": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000001",
+        "revision": 3,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T10:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T10:30:00Z",
+        "cancelled_at": "2026-10-04T10:30:00Z",
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "cancelled",
+        "evaluated_at": "2026-10-04T10:30:00Z"
+      }
+    },
+    "rule-activated": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000007",
+        "revision": 2,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T11:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "service",
+          "subject": "keep:silence-clock",
+          "issuer": null,
+          "display_name": "Keep"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T11:00:03Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "active",
+        "evaluated_at": "2026-10-04T11:00:03Z"
+      }
+    },
+    "rule-expired": {
+      "schema": "Silence",
+      "body": {
+        "schema_version": 1,
+        "id": "10000000-0000-4000-8000-000000000007",
+        "revision": 3,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "selector": {
+          "kind": "alert",
+          "fingerprints": [
+            "alpha:disk-1"
+          ]
+        },
+        "starts_at": "2026-10-04T11:00:00Z",
+        "ends_at": "2026-10-04T12:00:00Z",
+        "comment": "Disk investigation",
+        "created_by": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "updated_by": {
+          "kind": "service",
+          "subject": "keep:silence-clock",
+          "issuer": null,
+          "display_name": "Keep"
+        },
+        "created_at": "2026-10-04T10:00:00Z",
+        "updated_at": "2026-10-04T12:05:00Z",
+        "cancelled_at": null,
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "state": "expired",
+        "evaluated_at": "2026-10-04T12:05:00Z"
+      }
+    },
+    "create-result": {
+      "schema": "MutationResponse",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000001",
+        "replayed": false,
+        "result": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T11:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:00:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:00:00Z"
+        }
+      },
+      "http_status": 201
+    },
+    "create-replay": {
+      "schema": "MutationResponse",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000001",
+        "replayed": true,
+        "result": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T11:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:00:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:00:00Z"
+        }
+      },
+      "http_status": 201
+    },
+    "extend-result": {
+      "schema": "MutationResponse",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000002",
+        "replayed": false,
+        "result": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:20:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:20:00Z"
+        }
+      },
+      "http_status": 200
+    },
+    "cancel-result": {
+      "schema": "MutationResponse",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000003",
+        "replayed": false,
+        "result": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 3,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:30:00Z",
+          "cancelled_at": "2026-10-04T10:30:00Z",
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "cancelled",
+          "evaluated_at": "2026-10-04T10:30:00Z"
+        }
+      },
+      "http_status": 200
+    },
+    "list-result": {
+      "schema": "SilenceList",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "schema_version": 1,
+            "id": "10000000-0000-4000-8000-000000000001",
+            "revision": 1,
+            "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "team_id": "alpha",
+            "selector": {
+              "kind": "alert",
+              "fingerprints": [
+                "alpha:disk-1"
+              ]
+            },
+            "starts_at": "2026-10-04T10:00:00Z",
+            "ends_at": "2026-10-04T11:00:00Z",
+            "comment": "Disk investigation",
+            "created_by": {
+              "kind": "user",
+              "subject": "fixture-user-1",
+              "issuer": "https://id.example.test/realms/keep",
+              "display_name": "Fixture Responder"
+            },
+            "updated_by": {
+              "kind": "user",
+              "subject": "fixture-user-1",
+              "issuer": "https://id.example.test/realms/keep",
+              "display_name": "Fixture Responder"
+            },
+            "created_at": "2026-10-04T10:00:00Z",
+            "updated_at": "2026-10-04T10:00:00Z",
+            "cancelled_at": null,
+            "origin": "keep-ui",
+            "correlation_id": null,
+            "state": "active",
+            "evaluated_at": "2026-10-04T10:15:00Z"
+          },
+          {
+            "schema_version": 1,
+            "id": "10000000-0000-4000-8000-000000000007",
+            "revision": 1,
+            "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "team_id": "alpha",
+            "selector": {
+              "kind": "alert",
+              "fingerprints": [
+                "alpha:disk-1"
+              ]
+            },
+            "starts_at": "2026-10-04T11:00:00Z",
+            "ends_at": "2026-10-04T12:00:00Z",
+            "comment": "Disk investigation",
+            "created_by": {
+              "kind": "user",
+              "subject": "fixture-user-1",
+              "issuer": "https://id.example.test/realms/keep",
+              "display_name": "Fixture Responder"
+            },
+            "updated_by": {
+              "kind": "user",
+              "subject": "fixture-user-1",
+              "issuer": "https://id.example.test/realms/keep",
+              "display_name": "Fixture Responder"
+            },
+            "created_at": "2026-10-04T10:00:00Z",
+            "updated_at": "2026-10-04T10:00:00Z",
+            "cancelled_at": null,
+            "origin": "keep-ui",
+            "correlation_id": null,
+            "state": "scheduled",
+            "evaluated_at": "2026-10-04T10:15:00Z"
+          }
+        ],
+        "next_cursor": null
+      },
+      "http_status": 200
+    },
+    "empty-list-result": {
+      "schema": "SilenceList",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [],
+        "next_cursor": null
+      },
+      "http_status": 200
+    },
+    "create-group-mm-result": {
+      "schema": "MutationResponse",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "c0000000-0000-4000-8000-000000000004",
+        "replayed": false,
+        "result": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000005",
+          "revision": 1,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "incident",
+            "incident_ids": [
+              "00000001-1111-4111-8111-111111111111",
+              "00000002-1111-4111-8111-111111111111"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T11:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:00:00Z",
+          "cancelled_at": null,
+          "origin": "mm-bridge",
+          "correlation_id": "fixture-post-group",
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:00:00Z"
+        }
+      },
+      "http_status": 201
+    },
+    "event-created": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000001",
+        "event_type": "silence.created",
+        "occurred_at": "2026-10-04T10:00:00Z",
+        "effective_at": "2026-10-04T10:00:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "client_request_id": "c0000000-0000-4000-8000-000000000001",
+        "actor": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "reason": "",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T11:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:00:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:00:00Z"
+        }
+      }
+    },
+    "event-updated": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000002",
+        "event_type": "silence.updated",
+        "occurred_at": "2026-10-04T10:20:00Z",
+        "effective_at": "2026-10-04T10:20:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000001",
+        "revision": 2,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "keep-ui",
+        "correlation_id": null,
+        "client_request_id": "c0000000-0000-4000-8000-000000000002",
+        "actor": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "reason": "",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:20:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:20:00Z"
+        }
+      }
+    },
+    "event-cancelled": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000003",
+        "event_type": "silence.cancelled",
+        "occurred_at": "2026-10-04T10:30:00Z",
+        "effective_at": "2026-10-04T10:30:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000001",
+        "revision": 3,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "mm-bridge",
+        "correlation_id": "fixture-post-1",
+        "client_request_id": "c0000000-0000-4000-8000-000000000003",
+        "actor": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "reason": "Investigation complete",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000001",
+          "revision": 3,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:30:00Z",
+          "cancelled_at": "2026-10-04T10:30:00Z",
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "cancelled",
+          "evaluated_at": "2026-10-04T10:30:00Z"
+        }
+      }
+    },
+    "event-activated": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000004",
+        "event_type": "silence.activated",
+        "occurred_at": "2026-10-04T11:00:03Z",
+        "effective_at": "2026-10-04T11:00:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000007",
+        "revision": 2,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "keep-system",
+        "correlation_id": null,
+        "client_request_id": null,
+        "actor": {
+          "kind": "service",
+          "subject": "keep:silence-clock",
+          "issuer": null,
+          "display_name": "Keep"
+        },
+        "reason": "",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000007",
+          "revision": 2,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T11:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "service",
+            "subject": "keep:silence-clock",
+            "issuer": null,
+            "display_name": "Keep"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T11:00:03Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "active",
+          "evaluated_at": "2026-10-04T11:00:03Z"
+        }
+      }
+    },
+    "event-expired": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000005",
+        "event_type": "silence.expired",
+        "occurred_at": "2026-10-04T12:05:00Z",
+        "effective_at": "2026-10-04T12:00:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000007",
+        "revision": 3,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "keep-system",
+        "correlation_id": null,
+        "client_request_id": null,
+        "actor": {
+          "kind": "service",
+          "subject": "keep:silence-clock",
+          "issuer": null,
+          "display_name": "Keep"
+        },
+        "reason": "",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000007",
+          "revision": 3,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "alert",
+            "fingerprints": [
+              "alpha:disk-1"
+            ]
+          },
+          "starts_at": "2026-10-04T11:00:00Z",
+          "ends_at": "2026-10-04T12:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "service",
+            "subject": "keep:silence-clock",
+            "issuer": null,
+            "display_name": "Keep"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T12:05:00Z",
+          "cancelled_at": null,
+          "origin": "keep-ui",
+          "correlation_id": null,
+          "state": "expired",
+          "evaluated_at": "2026-10-04T12:05:00Z"
+        }
+      }
+    },
+    "event-created-mm": {
+      "schema": "LifecycleEvent",
+      "body": {
+        "schema_version": 1,
+        "event_id": "e0000000-0000-4000-8000-000000000006",
+        "event_type": "silence.created",
+        "occurred_at": "2026-10-04T10:00:00Z",
+        "effective_at": "2026-10-04T10:00:00Z",
+        "silence_id": "10000000-0000-4000-8000-000000000005",
+        "revision": 1,
+        "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "team_id": "alpha",
+        "origin": "mm-bridge",
+        "correlation_id": "fixture-post-group",
+        "client_request_id": "c0000000-0000-4000-8000-000000000004",
+        "actor": {
+          "kind": "user",
+          "subject": "fixture-user-1",
+          "issuer": "https://id.example.test/realms/keep",
+          "display_name": "Fixture Responder"
+        },
+        "reason": "",
+        "resource": {
+          "schema_version": 1,
+          "id": "10000000-0000-4000-8000-000000000005",
+          "revision": 1,
+          "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "team_id": "alpha",
+          "selector": {
+            "kind": "incident",
+            "incident_ids": [
+              "00000001-1111-4111-8111-111111111111",
+              "00000002-1111-4111-8111-111111111111"
+            ]
+          },
+          "starts_at": "2026-10-04T10:00:00Z",
+          "ends_at": "2026-10-04T11:00:00Z",
+          "comment": "Disk investigation",
+          "created_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "updated_by": {
+            "kind": "user",
+            "subject": "fixture-user-1",
+            "issuer": "https://id.example.test/realms/keep",
+            "display_name": "Fixture Responder"
+          },
+          "created_at": "2026-10-04T10:00:00Z",
+          "updated_at": "2026-10-04T10:00:00Z",
+          "cancelled_at": null,
+          "origin": "mm-bridge",
+          "correlation_id": "fixture-post-group",
+          "state": "active",
+          "evaluated_at": "2026-10-04T10:00:00Z"
+        }
+      }
+    },
+    "effective-query": {
+      "schema": "EffectiveQuery",
+      "body": {
+        "schema_version": 1,
+        "targets": [
+          {
+            "kind": "alert",
+            "fingerprint": "alpha:disk-1"
+          },
+          {
+            "kind": "incident",
+            "incident_id": "00000001-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "method": "POST",
+      "path": "/silences/effective"
+    },
+    "effective-partial": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": false,
+            "coverage": "partial",
+            "silenced_until": null,
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 2,
+            "silenced_alerts": 1
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-overlap": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T12:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              },
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000002",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T12:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-after-cancel-one": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-forever": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": null,
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              },
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000003",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": null
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-before-start": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:59:59.999999Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-at-start": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T11:00:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T12:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000007",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T12:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-at-end": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T12:00:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-after-end-no-worker": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T11:00:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-all-alerts": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000001",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              },
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000009",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T12:00:00Z"
+              }
+            ],
+            "total_alerts": 2,
+            "silenced_alerts": 2
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-explicit-incident": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000001-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 3,
+            "silenced_alerts": 3
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-empty-incident": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 0,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-empty-explicit": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000001-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 0,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-shared-alert": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000001-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000002-1111-4111-8111-111111111111"
+            },
+            "silenced": false,
+            "coverage": "partial",
+            "silenced_until": null,
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000004",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000001-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 2,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:cpu-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          },
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000003-1111-4111-8111-111111111111"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-group-new-member": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000001-1111-4111-8111-111111111111"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000005",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000001-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000002-1111-4111-8111-111111111111"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000005",
+                "revision": 1,
+                "via": "incident",
+                "incident_id": "00000002-1111-4111-8111-111111111111",
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "incident",
+              "incident_id": "00000003-1111-4111-8111-111111111111"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-filter": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000006",
+                "revision": 1,
+                "via": "filter",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:cpu-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "effective-unassigned": {
+      "schema": "EffectiveResponse",
+      "body": {
+        "schema_version": 1,
+        "evaluated_at": "2026-10-04T10:15:00Z",
+        "items": [
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "unknown:disk-1"
+            },
+            "silenced": true,
+            "coverage": "full",
+            "silenced_until": "2026-10-04T11:00:00Z",
+            "reasons": [
+              {
+                "silence_id": "10000000-0000-4000-8000-000000000008",
+                "revision": 1,
+                "via": "fingerprint",
+                "incident_id": null,
+                "ends_at": "2026-10-04T11:00:00Z"
+              }
+            ],
+            "total_alerts": 1,
+            "silenced_alerts": 1
+          },
+          {
+            "target": {
+              "kind": "alert",
+              "fingerprint": "alpha:disk-1"
+            },
+            "silenced": false,
+            "coverage": "none",
+            "silenced_until": null,
+            "reasons": [],
+            "total_alerts": 1,
+            "silenced_alerts": 0
+          }
+        ]
+      },
+      "http_status": 200
+    },
+    "error-hidden": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "not_found",
+          "message": "Not found",
+          "field": null,
+          "current_revision": null
+        }
+      },
+      "http_status": 404
+    },
+    "error-write": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "forbidden",
+          "message": "Silence changes are not permitted",
+          "field": null,
+          "current_revision": null
+        }
+      },
+      "http_status": 403
+    },
+    "error-revision": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "revision_conflict",
+          "message": "Refresh the silence before updating it",
+          "field": "expected_revision",
+          "current_revision": 2
+        }
+      },
+      "http_status": 409
+    },
+    "error-idempotency": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "idempotency_conflict",
+          "message": "Request ID has already been used for a different command",
+          "field": "client_request_id",
+          "current_revision": null
+        }
+      },
+      "http_status": 409
+    },
+    "error-time": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "invalid_time",
+          "message": "End must be later than start and current time",
+          "field": "ends_at",
+          "current_revision": null
+        }
+      },
+      "http_status": 422
+    },
+    "error-selector": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "invalid_selector",
+          "message": "Targets must belong to one selected team",
+          "field": "selector",
+          "current_revision": null
+        }
+      },
+      "http_status": 422
+    },
+    "error-proof": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "actor_proof_required",
+          "message": "Verified operator authentication is required",
+          "field": null,
+          "current_revision": null
+        }
+      },
+      "http_status": 401
+    },
+    "error-proof-unavailable": {
+      "schema": "Error",
+      "body": {
+        "schema_version": 1,
+        "detail": {
+          "code": "actor_verification_unavailable",
+          "message": "Operator authentication cannot be verified",
+          "field": null,
+          "current_revision": null
+        }
+      },
+      "http_status": 503
+    }
+  },
+  "scenarios": [
+    {
+      "id": "utc-half-open-boundaries",
+      "given": {
+        "rules": [
+          "rule-scheduled"
+        ],
+        "fingerprint": "alpha:disk-1",
+        "worker_running": false
+      },
+      "expected": {
+        "before_start": "effective-before-start",
+        "at_start": "effective-at-start",
+        "at_end": "effective-at-end",
+        "stored_revision": 1
+      },
+      "message_refs": [
+        "rule-scheduled",
+        "effective-before-start",
+        "effective-at-start",
+        "effective-at-end"
+      ]
+    },
+    {
+      "id": "incoming-fingerprint-and-resolved",
+      "given": {
+        "rules": [
+          "rule-single"
+        ],
+        "incoming": [
+          {
+            "fingerprint": "alpha:disk-1",
+            "status": "firing"
+          },
+          {
+            "fingerprint": "alpha:disk-1",
+            "status": "resolved"
+          }
+        ],
+        "team_id": "alpha",
+        "at": "2026-10-04T10:15:00Z"
+      },
+      "expected": {
+        "saved_events": 2,
+        "notification_calls": 0,
+        "other_action_calls": 2,
+        "statuses": [
+          "firing",
+          "resolved"
+        ],
+        "rule_revision": 1
+      },
+      "message_refs": [
+        "rule-single",
+        "effective-partial"
+      ]
+    },
+    {
+      "id": "overlap-cancel-does-not-restore",
+      "given": {
+        "rules": [
+          "rule-single",
+          "rule-overlap"
+        ],
+        "cancel_rule": "10000000-0000-4000-8000-000000000002"
+      },
+      "expected": {
+        "before": "effective-overlap",
+        "after": "effective-after-cancel-one",
+        "active_rule_ids": [
+          "10000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "message_refs": [
+        "rule-single",
+        "rule-overlap",
+        "cancel-overlap",
+        "effective-overlap",
+        "effective-after-cancel-one"
+      ]
+    },
+    {
+      "id": "forever-is-explicit",
+      "given": {
+        "rules": [
+          "rule-single",
+          "rule-forever"
+        ]
+      },
+      "expected": {
+        "effective": "effective-forever",
+        "new_event_cancels_rule": false
+      },
+      "message_refs": [
+        "rule-single",
+        "rule-forever",
+        "effective-forever"
+      ]
+    },
+    {
+      "id": "partial-incident-safe-content",
+      "given": {
+        "rules": [
+          "rule-single"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1",
+            "alpha:cpu-1"
+          ]
+        },
+        "active_alerts": [
+          "alpha:disk-1",
+          "alpha:cpu-1"
+        ]
+      },
+      "expected": {
+        "effective": "effective-partial",
+        "notification_alerts": [
+          "alpha:cpu-1"
+        ],
+        "original_summary_reused": false
+      },
+      "message_refs": [
+        "rule-single",
+        "effective-partial"
+      ]
+    },
+    {
+      "id": "all-alert-coverage-earliest-end",
+      "given": {
+        "rules": [
+          "rule-single",
+          "rule-cpu"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1",
+            "alpha:cpu-1"
+          ]
+        },
+        "active_alerts": [
+          "alpha:disk-1",
+          "alpha:cpu-1"
+        ]
+      },
+      "expected": {
+        "effective": "effective-all-alerts",
+        "bound": "2026-10-04T11:00:00Z"
+      },
+      "message_refs": [
+        "rule-single",
+        "rule-cpu",
+        "effective-all-alerts"
+      ]
+    },
+    {
+      "id": "incident-new-alert-inherits",
+      "given": {
+        "rules": [
+          "rule-incident"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1",
+            "alpha:cpu-1",
+            "alpha:memory-1"
+          ]
+        },
+        "active_alerts": [
+          "alpha:disk-1",
+          "alpha:cpu-1",
+          "alpha:memory-1"
+        ]
+      },
+      "expected": {
+        "effective": "effective-explicit-incident",
+        "notification_calls": 0
+      },
+      "message_refs": [
+        "rule-incident",
+        "effective-explicit-incident"
+      ]
+    },
+    {
+      "id": "empty-incident-not-implicitly-silenced",
+      "given": {
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": []
+        }
+      },
+      "expected": {
+        "without_explicit": "effective-empty-incident",
+        "with_explicit": "effective-empty-explicit"
+      },
+      "message_refs": [
+        "rule-incident",
+        "effective-empty-incident",
+        "effective-empty-explicit"
+      ]
+    },
+    {
+      "id": "shared-alert-no-recursive-propagation",
+      "given": {
+        "rules": [
+          "rule-incident"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1"
+          ],
+          "00000002-1111-4111-8111-111111111111": [
+            "alpha:disk-1",
+            "alpha:cpu-1"
+          ],
+          "00000003-1111-4111-8111-111111111111": [
+            "alpha:cpu-1"
+          ]
+        },
+        "active_alerts": [
+          "alpha:disk-1",
+          "alpha:cpu-1"
+        ]
+      },
+      "expected": {
+        "effective": "effective-shared-alert",
+        "incident_2_partial": true,
+        "cpu_silenced": false
+      },
+      "message_refs": [
+        "rule-incident",
+        "effective-shared-alert"
+      ]
+    },
+    {
+      "id": "mm-group-snapshot-not-dynamic",
+      "given": {
+        "rules": [
+          "rule-group"
+        ],
+        "post_members_now": [
+          "00000001-1111-4111-8111-111111111111",
+          "00000002-1111-4111-8111-111111111111",
+          "00000003-1111-4111-8111-111111111111"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1"
+          ],
+          "00000002-1111-4111-8111-111111111111": [
+            "alpha:cpu-1"
+          ],
+          "00000003-1111-4111-8111-111111111111": [
+            "alpha:memory-1"
+          ]
+        }
+      },
+      "expected": {
+        "effective": "effective-group-new-member",
+        "new_member_silenced": false
+      },
+      "message_refs": [
+        "create-group-mm",
+        "rule-group",
+        "event-created-mm",
+        "effective-group-new-member"
+      ]
+    },
+    {
+      "id": "atomic-foreign-group-hidden",
+      "given": {
+        "actor": {
+          "role": "responder",
+          "teams": [
+            "alpha"
+          ],
+          "visibility": "team"
+        },
+        "target_teams": {
+          "00000001-1111-4111-8111-111111111111": "alpha",
+          "00000004-1111-4111-8111-111111111111": "beta"
+        },
+        "command": "create-foreign-group"
+      },
+      "expected": {
+        "error": "error-hidden",
+        "new_rules": 0,
+        "audit_events": 0,
+        "outbox_events": 0
+      },
+      "message_refs": [
+        "create-foreign-group",
+        "error-hidden"
+      ]
+    },
+    {
+      "id": "shared-read-is-not-write",
+      "given": {
+        "actor": {
+          "role": "responder",
+          "teams": [
+            "alpha"
+          ],
+          "visibility": "all"
+        },
+        "target_teams": {
+          "00000001-1111-4111-8111-111111111111": "alpha",
+          "00000004-1111-4111-8111-111111111111": "beta"
+        },
+        "command": "create-foreign-group"
+      },
+      "expected": {
+        "error": "error-write",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-foreign-group",
+        "error-write"
+      ]
+    },
+    {
+      "id": "admin-group-still-one-team",
+      "given": {
+        "actor": {
+          "role": "admin"
+        },
+        "target_teams": {
+          "00000001-1111-4111-8111-111111111111": "alpha",
+          "00000004-1111-4111-8111-111111111111": "beta"
+        },
+        "command": "create-foreign-group"
+      },
+      "expected": {
+        "error": "error-selector",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-foreign-group",
+        "error-selector"
+      ]
+    },
+    {
+      "id": "viewer-and-read-only",
+      "given": {
+        "attempts": [
+          {
+            "role": "viewer",
+            "teams": [
+              "alpha"
+            ]
+          },
+          {
+            "role": "responder",
+            "teams": [
+              "alpha"
+            ],
+            "read_only": true
+          }
+        ]
+      },
+      "expected": {
+        "each_error": "error-write",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-alert",
+        "error-write"
+      ]
+    },
+    {
+      "id": "colliding-history-denied",
+      "given": {
+        "actor": {
+          "role": "responder",
+          "teams": [
+            "alpha"
+          ]
+        },
+        "history_owners": [
+          "alpha",
+          "beta",
+          null
+        ]
+      },
+      "expected": {
+        "strict_error": "error-hidden",
+        "shared_error": "error-write",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-alert",
+        "error-hidden",
+        "error-write"
+      ]
+    },
+    {
+      "id": "unassigned-is-not-wildcard",
+      "given": {
+        "rules": [
+          "rule-unassigned"
+        ],
+        "actor": {
+          "role": "admin"
+        },
+        "owners": {
+          "unknown:disk-1": null,
+          "alpha:disk-1": "alpha"
+        }
+      },
+      "expected": {
+        "effective": "effective-unassigned"
+      },
+      "message_refs": [
+        "rule-unassigned",
+        "effective-unassigned"
+      ]
+    },
+    {
+      "id": "cel-only-canonical-team-data",
+      "given": {
+        "rules": [
+          "rule-filter"
+        ],
+        "alerts": [
+          {
+            "fingerprint": "alpha:disk-1",
+            "team_id": "alpha",
+            "service": "database"
+          },
+          {
+            "fingerprint": "alpha:cpu-1",
+            "team_id": "alpha"
+          },
+          {
+            "fingerprint": "beta:disk-1",
+            "team_id": "beta",
+            "service": "database"
+          }
+        ]
+      },
+      "expected": {
+        "effective": "effective-filter",
+        "missing_field_matches": false,
+        "beta_matches": false
+      },
+      "message_refs": [
+        "rule-filter",
+        "create-filter",
+        "effective-filter"
+      ]
+    },
+    {
+      "id": "invalid-period-no-write",
+      "given": {
+        "command": "create-invalid-time"
+      },
+      "expected": {
+        "error": "error-time",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-invalid-time",
+        "error-time"
+      ]
+    },
+    {
+      "id": "command-retry-after-lost-response",
+      "given": {
+        "command": "create-alert",
+        "attempts": 2,
+        "retry_after_cancel": true,
+        "retry_after_expiry": true
+      },
+      "expected": {
+        "first": "create-result",
+        "retry": "create-replay",
+        "created_rule_ids": [
+          "10000000-0000-4000-8000-000000000001"
+        ],
+        "created_events": 1,
+        "replay_does_not_extend": true,
+        "read_current_separately": true
+      },
+      "message_refs": [
+        "create-alert",
+        "create-result",
+        "create-replay",
+        "rule-cancelled"
+      ]
+    },
+    {
+      "id": "reused-key-different-command",
+      "given": {
+        "command": "create-alert",
+        "retry_change": {
+          "comment": "Different command"
+        }
+      },
+      "expected": {
+        "error": "error-idempotency",
+        "new_rules_after_first": 0
+      },
+      "message_refs": [
+        "create-alert",
+        "error-idempotency"
+      ]
+    },
+    {
+      "id": "concurrent-update",
+      "given": {
+        "current": "rule-extended",
+        "command": "update-stale"
+      },
+      "expected": {
+        "error": "error-revision",
+        "unchanged_revision": 2
+      },
+      "message_refs": [
+        "rule-extended",
+        "update-stale",
+        "error-revision"
+      ]
+    },
+    {
+      "id": "no-actor-proof-no-mm-command",
+      "given": {
+        "service_authenticated": true,
+        "headers": {
+          "X-KEEP-ROLE": "admin",
+          "X-KEEP-USER": "somebody@example.test"
+        },
+        "actor_token_present": false
+      },
+      "expected": {
+        "error": "error-proof",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-group-mm",
+        "error-proof"
+      ]
+    },
+    {
+      "id": "verified-operator-mm-command",
+      "given": {
+        "service_authenticated": true,
+        "service_allowed_teams": [
+          "alpha"
+        ],
+        "verified_oidc_identity": {
+          "issuer": "https://id.example.test/realms/keep",
+          "subject": "fixture-user-1",
+          "groups": [
+            "/roles/responder",
+            "/teams/alpha"
+          ],
+          "token_kind": "user_access"
+        },
+        "at": "2026-10-04T10:00:00Z",
+        "target_teams": {
+          "00000001-1111-4111-8111-111111111111": "alpha",
+          "00000002-1111-4111-8111-111111111111": "alpha"
+        }
+      },
+      "expected": {
+        "response": "create-group-mm-result",
+        "event": "event-created-mm",
+        "new_rules": 1,
+        "origin": "mm-bridge"
+      },
+      "message_refs": [
+        "create-group-mm",
+        "create-group-mm-result",
+        "event-created-mm"
+      ]
+    },
+    {
+      "id": "signed-role-string-does-not-grant-admin",
+      "given": {
+        "service_authenticated": true,
+        "verified_oidc_identity": {
+          "groups": [
+            "/roles/viewer",
+            "/teams/alpha"
+          ],
+          "role": "admin",
+          "token_kind": "user_access"
+        }
+      },
+      "expected": {
+        "error": "error-write",
+        "mapped_role": "viewer",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-group-mm",
+        "error-write"
+      ]
+    },
+    {
+      "id": "idp-proof-check-unavailable",
+      "given": {
+        "service_authenticated": true,
+        "actor_verification_available": false
+      },
+      "expected": {
+        "error": "error-proof-unavailable",
+        "new_rules": 0
+      },
+      "message_refs": [
+        "create-group-mm",
+        "error-proof-unavailable"
+      ]
+    },
+    {
+      "id": "delayed-worker-does-not-extend",
+      "given": {
+        "rules": [
+          "rule-single"
+        ],
+        "worker_running": false,
+        "at": "2026-10-04T11:00:00Z"
+      },
+      "expected": {
+        "effective": "effective-after-end-no-worker",
+        "historical_notification_replay": 0
+      },
+      "message_refs": [
+        "rule-single",
+        "effective-after-end-no-worker"
+      ]
+    },
+    {
+      "id": "timer-race-and-late-delivery",
+      "given": {
+        "rules": [
+          "rule-scheduled"
+        ],
+        "activated_at": "2026-10-04T11:00:03Z",
+        "expired_at": "2026-10-04T12:05:00Z"
+      },
+      "expected": {
+        "events": [
+          "event-activated",
+          "event-expired"
+        ],
+        "effective_transition_times": [
+          "2026-10-04T11:00:00Z",
+          "2026-10-04T12:00:00Z"
+        ],
+        "stale_timer_after_cancel_emits": 0
+      },
+      "message_refs": [
+        "rule-scheduled",
+        "event-activated",
+        "event-expired"
+      ]
+    },
+    {
+      "id": "receiver-duplicate-and-reorder",
+      "given": {
+        "delivery": [
+          "event-created",
+          "event-cancelled",
+          "event-updated",
+          "event-cancelled"
+        ]
+      },
+      "expected": {
+        "latest_rule": "rule-cancelled",
+        "revision": 3,
+        "echo_commands": 0,
+        "control_events_suppressed": false
+      },
+      "message_refs": [
+        "event-created",
+        "event-updated",
+        "event-cancelled",
+        "rule-cancelled"
+      ]
+    },
+    {
+      "id": "retry-rechecks-before-provider",
+      "given": {
+        "first_send_failed_before_rule": true,
+        "rule_created_before_retry": "rule-single",
+        "notification": true
+      },
+      "expected": {
+        "retry_provider_calls": 0,
+        "results": null,
+        "skip_reason": "silenced",
+        "independent_other_actions_continue": true
+      },
+      "message_refs": [
+        "rule-single"
+      ]
+    },
+    {
+      "id": "resolve-partial-and-merge-split",
+      "given": {
+        "rules": [
+          "rule-single"
+        ],
+        "incidents": {
+          "00000001-1111-4111-8111-111111111111": [
+            "alpha:disk-1",
+            "alpha:cpu-1"
+          ]
+        },
+        "incident_status": "resolved",
+        "resolved_alerts": [
+          "alpha:disk-1",
+          "alpha:cpu-1"
+        ],
+        "new_incident_ids": [
+          "00000002-1111-4111-8111-111111111111",
+          "00000003-1111-4111-8111-111111111111"
+        ]
+      },
+      "expected": {
+        "resolved_coverage": "partial",
+        "resolved_notification_alerts": [
+          "alpha:cpu-1"
+        ],
+        "incident_selector_ids_copied": false
+      },
+      "message_refs": [
+        "rule-single",
+        "effective-partial"
+      ]
+    }
+  ]
+}

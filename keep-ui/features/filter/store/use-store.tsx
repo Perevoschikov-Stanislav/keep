@@ -12,17 +12,20 @@ import { FacetsConfig } from "../models";
 import { useInitialStateHandler } from "./use-initial-state-handler";
 // import { useFacetsStateHandler } from "./use-facets-state-handler";
 
-export function useNewFacetStore(facetsConfig: FacetsConfig | undefined) {
+export function useNewFacetStore(
+  facetsConfig: FacetsConfig | undefined,
+  panelId?: string
+) {
   const storeRef = useRef<ReturnType<typeof createFacetsPanelStore> | undefined>(undefined);
 
   if (!storeRef.current) {
     storeRef.current = createFacetsPanelStore(); // New store per provider
   }
   useFacetsConfig(facetsConfig, storeRef.current);
-  useInitialStateHandler(storeRef.current);
+  useInitialStateHandler(storeRef.current, panelId);
   useFacetsLoadingStateHandler(storeRef.current);
   useQueriesHandler(storeRef.current);
-  useQueryParams(storeRef.current);
+  useQueryParams(storeRef.current, panelId);
 
   return storeRef.current;
 }

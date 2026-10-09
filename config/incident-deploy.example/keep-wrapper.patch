@@ -1,0 +1,42 @@
+--- a/values.yaml
++++ b/values.yaml
+@@ -50 +50 @@
+-      allowed_groups = [ "keep-admin", "keep-ops", "keep-ops-l2", "keep-scanner", "keep-viewer" ]
++      allowed_groups = [ "/keep-admin", "/keep-ops-l1", "/keep-ops-l2", "/keep-it", "/keep-scanner", "/keep-viewer" ]
+@@ -53 +53,2 @@
+     scope: "openid email profile groups"
++    oidc-groups-claim: keep_groups
+@@ -154,5 +155,5 @@
+         value: "true"
+       - name: KEEP_OAUTH2_PROXY_ADMIN_ROLES
+-        value: keep-admin,keep-ops,keep-ops-l2,keep-scanner,keep-viewer
++        value: /keep-admin
+       - name: KEEP_OAUTH2_PROXY_WEBHOOK_ROLES
+         value: admin,noc,webhook
+@@ -174,7 +175,15 @@
+           secretKey: key
+       - name: KEEP_DEFAULT_API_KEYS
+-        value: alertmanager:admin:$(KEEP_API_KEY_RAW),gitops:admin:$(KEEP_GITOPS_KEY_RAW),keep-mm:admin:$(KEEP_MM_KEY_RAW)
++        value: alertmanager:admin:$(KEEP_API_KEY_RAW),gitops:admin:$(KEEP_GITOPS_KEY_RAW)
+       - name: KEEP_IMPERSONATION_ENABLED
+-        value: "true"
++        value: "false"
++      - name: BRIDGE_TRANSPORT_TOKEN
++        secretKeyRef:
++          secretName: keep-core-bridge
++          secretKey: transport
++      - name: KEEP_BRIDGE_SERVICE_TOKEN
++        secretKeyRef:
++          secretName: keep-core-bridge
++          secretKey: service
+       - name: KEEP_DEFAULT_USERNAME
+         value: keep
+--- a/templates/keep-mm.yaml
++++ b/templates/keep-mm.yaml
+@@ -55,5 +55,5 @@
+   namespace: {{ .Release.Namespace }}
+ spec:
+-  replicas: 1
++  replicas: {{ if hasKey .Values.keepMm "replicas" }}{{ .Values.keepMm.replicas }}{{ else }}1{{ end }}
+   strategy:
+     type: Recreate

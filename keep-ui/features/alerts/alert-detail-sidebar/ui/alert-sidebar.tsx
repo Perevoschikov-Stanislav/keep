@@ -1,4 +1,6 @@
 import { Fragment } from "react";
+import { EventPresentation } from "@/shared/ui/EventPresentation/EventPresentation";
+import { AlertCorrelationExplanation } from "@/shared/ui/CorrelationExplanation/CorrelationExplanation";
 import { Dialog, Transition } from "@headlessui/react";
 import { AlertDto } from "@/entities/alerts/model";
 import { Button, Title, Divider } from "@tremor/react";
@@ -144,7 +146,7 @@ export const AlertSidebar = ({
                       severity={alert.severity as unknown as UISeverity}
                     />
                   )}
-                  {alert?.name ? alert.name : "Alert Details"}
+                  {alert?.presentation?.title || alert?.name || "Alert Details"}
                 </Dialog.Title>
                 <Divider className="mb-0" />
                 {alert && (
@@ -168,6 +170,8 @@ export const AlertSidebar = ({
             </div>
             {alert && (
               <div className="space-y-4">
+                <EventPresentation presentation={alert.presentation} />
+                <AlertCorrelationExplanation correlation={alert.correlation} />
                 <div className="space-y-2">
                   {(() => {
                     const configuredFields = config?.ALERT_SIDEBAR_FIELDS || [];

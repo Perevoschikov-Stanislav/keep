@@ -8,6 +8,11 @@ import {
   useSearchParams,
   usePathname,
 } from "next/navigation";
+import {
+  getFilterStorageKey,
+  loadSavedFacetsState,
+  saveFacetsState,
+} from "../filter-persistence";
 
 const facetQueryParamPrefix = "facet_";
 
@@ -71,10 +76,17 @@ function replaceQueryParams(searchParams: URLSearchParams): void {
   );
 }
 
-export function useQueryParams(store: StoreApi<FacetsPanelState>) {
+export function useQueryParams(
+  store: StoreApi<FacetsPanelState>,
+  panelId?: string
+) {
   const searchParamsRef = useRef<ReadonlyURLSearchParams | undefined>(undefined);
   searchParamsRef.current = useSearchParams();
   const pathname = usePathname();
+  const storageKey = useMemo(
+    () => getFilterStorageKey(panelId || "default", pathname),
+    [panelId, pathname]
+  );
   const facets = useStore(store, (state) => state.facets);
   const allFacetOptions = useStore(store, (state) => state.facetOptions);
   const allFacetOptionsRef = useRef<Record<string, FacetOptionDto[]> | null>(
@@ -106,19 +118,20 @@ export function useQueryParams(store: StoreApi<FacetsPanelState>) {
 
   useEffect(() => {
     return () => {
-      const newParams = new URLSearchParams(searchParamsRef.current);
-      const facetQueryParams = Array.from(newParams.entries()).filter(([key]) =>
+      const baseParams =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search)
+          : new URLSearchParams(searchParamsRef.current);
+      const facetKeys = Array.from(baseParams.keys()).filter((key) =>
         key.startsWith(facetQueryParamPrefix)
       );
 
-      if (facetQueryParams.length) {
-        facetQueryParams.forEach(([key, value]) =>
-          newParams.delete(key, value)
-        );
-        replaceQueryParams(newParams);
+      if (facetKeys.length) {
+        facetKeys.forEach((key) => baseParams.delete(key));
+        replaceQueryParams(baseParams);
       }
     };
-  }, [pathname]);
+  }, [pathname, panelId]);
 
   const formattedFacets = useMemo(() => {
     if (!facets) {
@@ -128,6 +141,8 @@ export function useQueryParams(store: StoreApi<FacetsPanelState>) {
     return facets
       .map((facet: FacetDto) => ({
         id: facet.id,
+        name: facet.name,
+        property_path: facet.property_path,
         queryParamName:
           facetQueryParamPrefix + facet.property_path.replace(/\./g, "_"),
       }))
@@ -153,28 +168,58 @@ export function useQueryParams(store: StoreApi<FacetsPanelState>) {
       key.startsWith(facetQueryParamPrefix)
     );
 
-    facetEntries
-      .map(([key, value]) => ({
-        facetName: key,
-        values: splitFacetValues(value),
-      }))
-      .forEach(({ facetName, values }) => {
-        const facetId = formattedFacetsDict[facetName];
+    // If facetsState is empty (e.g. standalone hook execution in tests), apply from URL params or localStorage
+    const currentFacetsState = facetsStateRef.current || {};
+    const isStateEmpty = Object.keys(currentFacetsState).length === 0;
 
-        if (!facetsStatePatch[facetId]) {
-          facetsStatePatch[facetId] = {};
-        }
+    if (isStateEmpty && facetEntries.length > 0) {
+      facetEntries
+        .map(([key, value]) => ({
+          facetName: key,
+          values: splitFacetValues(value),
+        }))
+        .forEach(({ facetName, values }) => {
+          const facetId = formattedFacetsDict[facetName];
+          if (!facetId) return;
 
-        values?.forEach((value) => {
-          if (!value) {
-            return;
+          if (!facetsStatePatch[facetId]) {
+            facetsStatePatch[facetId] = {};
           }
 
-          facetsStatePatch[facetId][value] = true;
-        });
-      });
+          values?.forEach((value) => {
+            if (!value) {
+              return;
+            }
 
-    patchFacetsState(facetsStatePatch);
+            facetsStatePatch[facetId][value] = true;
+          });
+        });
+
+      patchFacetsState(facetsStatePatch);
+      saveFacetsState(storageKey, facetsStatePatch);
+    } else if (isStateEmpty) {
+      const savedState = loadSavedFacetsState(storageKey);
+      if (savedState && typeof savedState === "object") {
+        const facetIds = new Set(formattedFacets.map((f) => f.id));
+        const facetNameMap = new Map(formattedFacets.map((f) => [f.name, f.id]));
+        const facetPropMap = new Map(
+          formattedFacets.map((f) => [f.property_path, f.id])
+        );
+        Object.entries(savedState).forEach(([fKey, opts]) => {
+          const targetId =
+            (facetIds.has(fKey) ? fKey : undefined) ??
+            facetPropMap.get(fKey) ??
+            facetNameMap.get(fKey);
+          if (targetId && opts && typeof opts === "object") {
+            facetsStatePatch[targetId] = opts;
+          }
+        });
+        if (Object.keys(facetsStatePatch).length > 0) {
+          patchFacetsState(facetsStatePatch);
+        }
+      }
+    }
+
     setIsFacetsStateInitializedFromQueryParams(true);
   }, [
     formattedFacets,
@@ -182,10 +227,27 @@ export function useQueryParams(store: StoreApi<FacetsPanelState>) {
     patchFacetsState,
     setIsFacetsStateInitializedFromQueryParams,
     isInitialStateHandled,
+    storageKey,
+    facets,
   ]);
 
+  // Synchronously persist facets state to localStorage on every change
   useEffect(() => {
-    if (!formattedFacets) {
+    if (!isInitialStateHandled || !facets) {
+      return;
+    }
+    saveFacetsState(storageKey, facetsState);
+  }, [
+    facetsState,
+    facetsStateRefreshToken,
+    isInitialStateHandled,
+    facets,
+    storageKey,
+  ]);
+
+  // Debounced sync of facetsState to URL query parameters
+  useEffect(() => {
+    if (!formattedFacets || !isInitialStateHandled) {
       return;
     }
 
@@ -204,15 +266,19 @@ export function useQueryParams(store: StoreApi<FacetsPanelState>) {
 
       Array.from(oldQueryParams.entries())
         .filter(([key, value]) => key.startsWith(facetQueryParamPrefix))
-        .forEach(([key, value]) => oldQueryParams.delete(key, value));
+        .forEach(([key]) => oldQueryParams.delete(key));
 
       Array.from(facetQueryParams.entries()).forEach(([key, value]) =>
         oldQueryParams.append(key, value)
       );
 
       replaceQueryParams(oldQueryParams);
-    }, 500);
+    }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [formattedFacets, facetsStateRefreshToken]);
+  }, [
+    formattedFacets,
+    facetsStateRefreshToken,
+    isInitialStateHandled,
+  ]);
 }

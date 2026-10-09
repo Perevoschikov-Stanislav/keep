@@ -1,0 +1,598 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: migration-example-a
+tenant_id: keep
+revision: migration-a-paused
+keep_url: https://keep.example.net
+access:
+  path: teams.yaml
+    sha256: 5e4d460eb11a8277cfe8367beaf5e85372bbf5bf7070cbb7ba5784f69b116a44
+mappings:
+- id: component-ownership
+  artifact:
+    path: mapping.yaml
+    sha256: 757da0e881006a1515a5794cfcee1291a17bd7589a26621bead7c88c996e20aa
+extraction:
+- id: component-name
+  artifact:
+    path: extraction.yaml
+    sha256: be63b1ad2881aef507c928fcfad150562a77a2d484ec7615cde4f8c7364dc9f5
+workflows:
+- id: record-example
+  artifact:
+    path: workflow.yaml
+    sha256: 969762ec468722e493cb9e4fdaef594e99aa9264a0978f3278f5cc1e8354d1a1
+normalization:
+- id: workload-owner
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 200
+  match: has(labels.kind) && labels.kind == 'workload' && ((has(labels.workload) &&
+    type(labels.workload) == string && labels.workload != '') || (has(labels.owner)
+    && type(labels.owner) == string && labels.owner != ''))
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+- id: explicit-labels
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+- id: pod-fallback
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 10
+  match: has(labels.pod)
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.pod
+    missing:
+      mode: mark_unknown
+    extract:
+      pattern: ^(.*)-[a-z0-9]{8,10}-[a-z0-9]{5}$
+      group: 1
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+presentations:
+- id: workload
+  title: 'workload: {{ normalized.workload }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+  - path: incident.status
+    label: Status
+    order: 10
+  - path: incident.assignee
+    label: Assignee
+    order: 11
+  - path: incident.automation.level
+    label: Response level
+    order: 12
+  - path: incident.automation.ack_deadline_at
+    label: ACK deadline
+    order: 13
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  links:
+  - label: Incident in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+- id: pvc
+  title: 'pvc: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Pvc
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+  - path: incident.status
+    label: Status
+    order: 10
+  - path: incident.assignee
+    label: Assignee
+    order: 11
+  - path: incident.automation.level
+    label: Response level
+    order: 12
+  - path: incident.automation.ack_deadline_at
+    label: ACK deadline
+    order: 13
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  links:
+  - label: Incident in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+- id: node
+  title: 'node: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Node
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+  - path: incident.status
+    label: Status
+    order: 10
+  - path: incident.assignee
+    label: Assignee
+    order: 11
+  - path: incident.automation.level
+    label: Response level
+    order: 12
+  - path: incident.automation.ack_deadline_at
+    label: ACK deadline
+    order: 13
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  links:
+  - label: Incident in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+- id: service
+  title: 'service: {{ normalized.service }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.service
+    label: Service
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+  - path: incident.status
+    label: Status
+    order: 10
+  - path: incident.assignee
+    label: Assignee
+    order: 11
+  - path: incident.automation.level
+    label: Response level
+    order: 12
+  - path: incident.automation.ack_deadline_at
+    label: ACK deadline
+    order: 13
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  links:
+  - label: Incident in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+lifecycle:
+- id: basic
+  resolve_on: all_resolved
+  reopen:
+    mode: reopen
+    within_seconds: 300
+    ack: preserve
+    assignee: preserve
+  flapping:
+    enabled: true
+    window_seconds: 300
+    transition_threshold: 4
+    reset_after_seconds: 600
+  clock: receive_time
+  late_event_policy: history_only
+correlation_overlap: first_match
+correlation:
+- id: workload
+  team_ids: &id002
+  - platform-blue
+  - database-green
+  priority: 100
+  match: normalized.kind == 'workload'
+  group_by: &id001
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.workload
+  required_fields: *id001
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: basic
+  presentation_ref: workload
+  automation_ref: response
+- id: pvc
+  team_ids: *id002
+  priority: 99
+  match: normalized.kind == 'pvc'
+  group_by: &id003
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id003
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: basic
+  presentation_ref: pvc
+  automation_ref: response
+- id: node
+  team_ids: *id002
+  priority: 98
+  match: normalized.kind == 'node'
+  group_by: &id004
+  - normalized.cluster
+  - normalized.resource
+  required_fields: *id004
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: basic
+  presentation_ref: node
+  automation_ref: response
+- id: service
+  team_ids: *id002
+  priority: 97
+  match: normalized.kind == 'service'
+  group_by: &id005
+  - normalized.cluster
+  - normalized.service
+  required_fields: *id005
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: basic
+  presentation_ref: service
+  automation_ref: response
+transports:
+- id: primary
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://primary.example.net
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 5
+    retry:
+      max_attempts: 4
+      initial_backoff_seconds: 2
+      max_backoff_seconds: 30
+      multiplier: 2
+    rate_limit:
+      per_second: 5
+      burst: 5
+    debounce_seconds: 2
+- id: secondary
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://secondary.example.net
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 5
+    retry:
+      max_attempts: 4
+      initial_backoff_seconds: 2
+      max_backoff_seconds: 30
+      multiplier: 2
+    rate_limit:
+      per_second: 5
+      burst: 5
+    debounce_seconds: 2
+destinations:
+- id: platform-blue-primary
+  team_id: platform-blue
+  transport_ref: primary
+  options:
+    path: /events/platform-blue
+- id: platform-blue-secondary
+  team_id: platform-blue
+  transport_ref: secondary
+  options:
+    path: /events/platform-blue
+- id: database-green-primary
+  team_id: database-green
+  transport_ref: primary
+  options:
+    path: /events/database-green
+- id: database-green-secondary
+  team_id: database-green
+  transport_ref: secondary
+  options:
+    path: /events/database-green
+contacts:
+- id: platform-blue-oncall
+  team_id: platform-blue
+  label: platform-blue on call
+  addresses:
+  - transport_ref: primary
+    address: platform-blue-primary
+  - transport_ref: secondary
+    address: platform-blue-secondary
+- id: database-green-oncall
+  team_id: database-green
+  label: database-green on call
+  addresses:
+  - transport_ref: primary
+    address: database-green-primary
+  - transport_ref: secondary
+    address: database-green-secondary
+automation:
+- id: response
+  team_ids: &id008
+  - platform-blue
+  - database-green
+  sla_start: last_reopen
+  ack_deadline_seconds: 300
+  stop_on:
+  - acknowledged
+  - resolved
+  on_reopen: reset
+  on_policy_update: next_episode
+  execution_lease_seconds: 300
+  levels:
+  - id: oncall
+    after_seconds: 300
+    contact_refs: &id006
+    - platform-blue-oncall
+    - database-green-oncall
+    destination_refs: &id007
+    - platform-blue-primary
+    - platform-blue-secondary
+    - database-green-primary
+    - database-green-secondary
+    workflow_refs:
+    - record-example
+    repeat_every_seconds: 60
+    repeat_limit: 0
+  - id: escalated
+    after_seconds: 900
+    contact_refs: *id006
+    destination_refs: *id007
+    workflow_refs:
+    - record-example
+    repeat_every_seconds: 300
+    repeat_limit: 0
+  reminder:
+    every_seconds: 1800
+    contact_refs: *id006
+    destination_refs: *id007
+  ticket:
+    workflow_ref: record-example
+    url_template: https://tickets.example.net/incidents/{{ incident.id }}
+    enrichment_key: ticket_url
+dispatch:
+  scan_interval_seconds: 2
+  batch_size: 100
+  lease_seconds: 60
+  snapshot_page_size: 100
+routes:
+- id: workload-notifications
+  team_ids: *id008
+  priority: 100
+  match: normalized.kind == 'workload'
+  event_types: &id009
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - platform-blue-primary
+  - platform-blue-secondary
+  - database-green-primary
+  - database-green-secondary
+  contact_refs:
+  - platform-blue-oncall
+  - database-green-oncall
+  presentation_ref: workload
+  delivery_mode: append
+  update_fallback: append
+  actions_fallback: keep_link
+- id: pvc-notifications
+  team_ids: *id008
+  priority: 99
+  match: normalized.kind == 'pvc'
+  event_types: *id009
+  destination_refs:
+  - platform-blue-primary
+  - platform-blue-secondary
+  - database-green-primary
+  - database-green-secondary
+  contact_refs:
+  - platform-blue-oncall
+  - database-green-oncall
+  presentation_ref: pvc
+  delivery_mode: append
+  update_fallback: append
+  actions_fallback: keep_link
+- id: node-notifications
+  team_ids: *id008
+  priority: 98
+  match: normalized.kind == 'node'
+  event_types: *id009
+  destination_refs:
+  - platform-blue-primary
+  - platform-blue-secondary
+  - database-green-primary
+  - database-green-secondary
+  contact_refs:
+  - platform-blue-oncall
+  - database-green-oncall
+  presentation_ref: node
+  delivery_mode: append
+  update_fallback: append
+  actions_fallback: keep_link
+- id: service-notifications
+  team_ids: *id008
+  priority: 97
+  match: normalized.kind == 'service'
+  event_types: *id009
+  destination_refs:
+  - platform-blue-primary
+  - platform-blue-secondary
+  - database-green-primary
+  - database-green-secondary
+  contact_refs:
+  - platform-blue-oncall
+  - database-green-oncall
+  presentation_ref: service
+  delivery_mode: append
+  update_fallback: append
+  actions_fallback: keep_link
+runtime_ownership:
+- team_id: platform-blue
+  domain: disabled
+  notifications: disabled
+  legacy_snooze: disabled
+- team_id: database-green
+  domain: disabled
+  notifications: disabled
+  legacy_snooze: disabled
+- team_id: null
+  domain: disabled
+  notifications: disabled
+  legacy_snooze: disabled

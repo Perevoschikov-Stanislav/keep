@@ -1,4 +1,6 @@
 export interface MappingRule {
+  is_provisioned?: boolean;
+  iac?: { managed: boolean; revision: string } | null;
   id: number;
   tenant_id: string;
   priority: number;

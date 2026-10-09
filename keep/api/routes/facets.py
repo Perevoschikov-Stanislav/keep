@@ -7,7 +7,7 @@ from fastapi import (
 )
 
 import keep.api.core.facets as facets
-from keep.api.models.facet import CreateFacetDto, FacetDto
+from keep.api.models.facet import CreateFacetDto, FacetDto, UpdateFacetDto
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
 
@@ -30,7 +30,7 @@ async def add_facet(
     entity_name: str,
     create_facet_dto: CreateFacetDto,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:incident"])
+        IdentityManagerFactory.get_auth_verifier(["write:facets"])
     )
 ) -> FacetDto:
     if entity_name not in entity_name_to_entity_type:
@@ -50,6 +50,39 @@ async def add_facet(
     )
     return created_facet
 
+@router.put(
+    "/{facet_id}",
+    description="Update facet for {entity_name}",
+)
+async def update_facet(
+    facet_id: str,
+    entity_name: str,
+    update_facet_dto: UpdateFacetDto,
+    authenticated_entity: AuthenticatedEntity = Depends(
+        IdentityManagerFactory.get_auth_verifier(["write:facets"])
+    )
+) -> FacetDto:
+    if entity_name not in entity_name_to_entity_type:
+        raise HTTPException(status_code=409, detail="Entity not found")
+    entity_type = entity_name_to_entity_type[entity_name]
+    tenant_id = authenticated_entity.tenant_id
+    logger.info(
+        "Updating facet",
+        extra={
+            "tenant_id": tenant_id,
+            "facet_id": facet_id,
+        },
+    )
+    updated = facets.update_facet(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        facet_id=facet_id,
+        update_facet_dto=update_facet_dto,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Facet not found")
+    return updated
+
 @router.delete(
     "/{facet_id}",
     description="Delete facet for {enity_name}",
@@ -58,7 +91,7 @@ async def delete_facet(
     facet_id: str,
     entity_name: str,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:incident"])
+        IdentityManagerFactory.get_auth_verifier(["delete:facets"])
     )
 ):
     if entity_name not in entity_name_to_entity_type:

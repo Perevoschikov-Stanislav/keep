@@ -143,6 +143,73 @@ describe("useQueryParams", () => {
     expect(store.getState().facetsState).toEqual({});
   });
 
+  it("should restore facets state from localStorage when no query params are present", () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+    window.localStorage.setItem(
+      "keep-filters-alerts-feed",
+      JSON.stringify({
+        severityFacet: { "'critical'": true },
+        incidentNameFacet: { "'HTTP 500 error, needs clarification'": true },
+      })
+    );
+
+    renderHook(() => useQueryParams(store, "alerts"));
+
+    expect(store.getState().facetsState).toEqual({
+      severityFacet: { "'critical'": true },
+      incidentNameFacet: { "'HTTP 500 error, needs clarification'": true },
+    });
+    expect(store.getState().isFacetsStateInitializedFromQueryParams).toBe(true);
+  });
+
+  it("should prioritize URL params over localStorage and sync to localStorage", () => {
+    window.localStorage.setItem(
+      "keep-filters-alerts-feed",
+      JSON.stringify({
+        severityFacet: { "'low'": true },
+      })
+    );
+    (useSearchParams as jest.Mock).mockReturnValue(
+      new URLSearchParams({
+        facet_severity: "'critical'",
+      })
+    );
+
+    renderHook(() => useQueryParams(store, "alerts"));
+
+    expect(store.getState().facetsState).toEqual({
+      severityFacet: { "'critical'": true },
+    });
+    expect(
+      JSON.parse(window.localStorage.getItem("keep-filters-alerts-feed")!)
+    ).toEqual({
+      severityFacet: { "'critical'": true },
+    });
+  });
+
+  it("should save to localStorage when facets state changes", () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+    renderHook(() => useQueryParams(store, "alerts"));
+
+    act(() => {
+      store.setState({
+        facetsState: {
+          severityFacet: { "'critical'": true },
+        },
+      });
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(600);
+    });
+
+    expect(
+      JSON.parse(window.localStorage.getItem("keep-filters-alerts-feed")!)
+    ).toEqual({
+      severityFacet: { "'critical'": true },
+    });
+  });
+
   it("should update query params when facets state changes", () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
 
@@ -216,7 +283,24 @@ describe("useQueryParams", () => {
   });
 
   describe("when unmounting", () => {
+    it("does not restore the previous incident view when ALL removes the query string", () => {
+      window.history.replaceState(null, "", "/incidents?view=it&facet_status=firing");
+      (useSearchParams as jest.Mock).mockReturnValue(
+        new URLSearchParams({ view: "it", facet_status: "firing" })
+      );
+      const { unmount } = renderHook(() => useQueryParams(store, "incidents-it"));
+
+      // Next completes navigation before the old view's facet panel unmounts.
+      window.history.replaceState(null, "", "/incidents");
+      unmount();
+
+      expect(window.location.search).toBe("");
+    });
+
     it("should clean up only facet-related query params when path changes", () => {
+      window.history.replaceState(
+        null, "", "/alerts/feed?facet_severity=critical&unrelated_param=some_value"
+      );
       (useSearchParams as jest.Mock).mockReturnValue(
         new URLSearchParams({
           facet_severity: "'critical','high'",

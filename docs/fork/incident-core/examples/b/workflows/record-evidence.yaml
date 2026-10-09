@@ -1,0 +1,13 @@
+workflow:
+  id: record-evidence
+  name: Record evidence
+  triggers:
+  - type: manual
+  actions:
+  - name: evidence
+    notification: false
+    provider:
+      type: mock
+      with:
+        enrich_incident:
+          evidence: '{{ incident.id }}'

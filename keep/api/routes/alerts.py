@@ -15,11 +15,23 @@ from arq import ArqRedis
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pusher import Pusher
+from sqlalchemy import or_
 from sqlalchemy_utils import UUIDType
-from sqlmodel import Session
+from sqlmodel import Session, select
+from uuid import uuid4
 
 from keep.api.arq_pool import get_pool
 from keep.api.bl.enrichments_bl import EnrichmentsBl
+from keep.api.bl.silences_bl import SilencesBL, check_alert_access
+from keep.api.bl.silences_migration_bl import _parse_utc_datetime
+from keep.api.models.db.silence import Silence
+from keep.api.models.silence import (
+    AlertSelector,
+    CancelSilenceCommand,
+    CreateSilenceCommand,
+    utc_now,
+    utc_string,
+)
 from keep.api.consts import KEEP_ARQ_QUEUE_BASIC, fingerprints_for_poll_payload
 from keep.api.core.alerts import (
     get_alert_facets,
@@ -75,6 +87,13 @@ from keep.api.utils.enrichment_helpers import convert_db_alerts_to_dto_alerts
 from keep.api.utils.time_stamp_helpers import get_time_stamp_filter
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import (
+    has_global_access,
+    accessible_alert_fingerprints,
+    require_alert_access,
+    visible_team_ids,
+    writable_team_ids,
+)
 from keep.providers.providers_factory import ProvidersFactory
 from keep.searchengine.searchengine import SearchEngine
 from keep.workflowmanager.workflowmanager import WorkflowManager
@@ -112,7 +131,8 @@ def fetch_alert_facet_options(
 
     try:
         facet_options = get_alert_facets_data(
-            tenant_id=tenant_id, facet_options_query=facet_options_query
+            tenant_id=tenant_id, facet_options_query=facet_options_query,
+            allowed_team_ids=visible_team_ids(authenticated_entity),
         )
     except CelToSqlException as e:
         logger.exception(
@@ -172,6 +192,8 @@ def fetch_alert_facet_fields(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> list:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global facet fields require admin")
     tenant_id = authenticated_entity.tenant_id
 
     logger.info(
@@ -222,14 +244,19 @@ def query_alerts(
     )
 
     try:
-        db_alerts, total_count = query_last_alerts(tenant_id=tenant_id, query=query)
+        db_alerts, total_count = query_last_alerts(
+            tenant_id=tenant_id, query=query,
+            allowed_team_ids=visible_team_ids(authenticated_entity),
+        )
     except CelToSqlException as e:
         logger.exception(f'Error parsing CEL expression "{query.cel}". {str(e)}')
         raise HTTPException(
             status_code=400, detail=f"Error parsing CEL expression: {query.cel}"
         ) from e
 
-    db_alerts = enrich_alerts_with_incidents(tenant_id, db_alerts)
+    db_alerts = enrich_alerts_with_incidents(
+        tenant_id, db_alerts, allowed_team_ids=visible_team_ids(authenticated_entity)
+    )
     enriched_alerts_dto = convert_db_alerts_to_dto_alerts(
         db_alerts, with_incidents=True
     )
@@ -267,7 +294,10 @@ def get_all_alerts(
             "tenant_id": tenant_id,
         },
     )
-    db_alerts = get_last_alerts(tenant_id=tenant_id, limit=limit)
+    db_alerts = get_last_alerts(
+        tenant_id=tenant_id, limit=limit,
+        allowed_team_ids=visible_team_ids(authenticated_entity),
+    )
     enriched_alerts_dto = convert_db_alerts_to_dto_alerts(db_alerts)
     logger.info(
         "Fetched alerts from DB",
@@ -289,6 +319,8 @@ def get_alerts_by_fingerprints_batch(
     tenant_id = authenticated_entity.tenant_id
     if not fingerprints:
         return []
+    for fingerprint in fingerprints:
+        require_alert_access(authenticated_entity, fingerprint)
 
     last_alerts = get_last_alerts_by_fingerprints(tenant_id, fingerprints)
     alert_ids = [last_alert.alert_id for last_alert in last_alerts]
@@ -296,7 +328,9 @@ def get_alerts_by_fingerprints_batch(
         return []
 
     db_alerts = get_alerts_by_ids(tenant_id, alert_ids)
-    db_alerts = enrich_alerts_with_incidents(tenant_id, db_alerts)
+    db_alerts = enrich_alerts_with_incidents(
+        tenant_id, db_alerts, allowed_team_ids=visible_team_ids(authenticated_entity)
+    )
     return convert_db_alerts_to_dto_alerts(db_alerts, with_incidents=True)
 
 
@@ -307,6 +341,7 @@ def get_alert_history(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> list[AlertDto]:
+    require_alert_access(authenticated_entity, fingerprint)
     logger.info(
         "Fetching alert history",
         extra={
@@ -341,6 +376,7 @@ def delete_alert(
         IdentityManagerFactory.get_auth_verifier(["delete:alert"])
     ),
 ) -> dict[str, str]:
+    require_alert_access(authenticated_entity, delete_alert.fingerprint, for_write=True)
     tenant_id = authenticated_entity.tenant_id
     user_email = authenticated_entity.email
 
@@ -412,11 +448,12 @@ def assign_alert(
     last_received: str,
     unassign: bool = False,
     authenticated_entity: AuthenticatedEntity = Depends(
-        # @tb: this is read because NOC users can also assign alerts to themselves
-        # anyway, this function needs to be refactored
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> dict[str, str]:
+    if authenticated_entity.role not in {"admin", "responder", "noc"}:
+        raise HTTPException(status_code=403, detail="Alert assignment requires responder")
+    require_alert_access(authenticated_entity, fingerprint, for_write=True)
     tenant_id = authenticated_entity.tenant_id
     user_email = authenticated_entity.email
     logger.info(
@@ -434,6 +471,11 @@ def assign_alert(
         assignees_last_receievd = enrichment.enrichments.get("assignees", {})
         status = enrichment.enrichments.get("status")
     if unassign:
+        if (
+            authenticated_entity.role == "noc"
+            and assignees_last_receievd.get(last_received) != user_email.lower()
+        ):
+            raise HTTPException(status_code=403, detail="Can only unassign yourself")
         assignees_last_receievd.pop(last_received, None)
     else:
         assignees_last_receievd[last_received] = user_email.lower()
@@ -791,6 +833,7 @@ def get_alert(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> AlertDto:
+    require_alert_access(authenticated_entity, fingerprint)
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Fetching alert",
@@ -799,22 +842,26 @@ def get_alert(
             "tenant_id": tenant_id,
         },
     )
-    all_alerts = get_all_alerts(authenticated_entity=authenticated_entity)
-    alert = list(filter(lambda alert: alert.fingerprint == fingerprint, all_alerts))
-    if alert:
-        return alert[0]
-    else:
-        raise HTTPException(status_code=404, detail="Alert not found")
+    alerts = get_last_alerts(
+        tenant_id=tenant_id,
+        fingerprints=[fingerprint],
+        limit=1,
+        allowed_team_ids=visible_team_ids(authenticated_entity),
+    )
+    if alerts:
+        return convert_db_alerts_to_dto_alerts(alerts)[0]
+    raise HTTPException(status_code=404, detail="Alert not found")
 
 
 @router.post("/enrich/note", description="Enrich an alert note")
 def enrich_alert_note(
     enrich_data: EnrichAlertNoteRequestBody,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["read:alert"])  # also NOC
+        IdentityManagerFactory.get_auth_verifier(["update:alert"])  # also NOC
     ),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    require_alert_access(authenticated_entity, enrich_data.fingerprint, for_write=True)
     logger.info("Enriching alert note", extra={"fingerprint": enrich_data.fingerprint})
     enriched_data = EnrichAlertRequestBody(
         enrichments={"note": enrich_data.note},
@@ -828,14 +875,137 @@ def enrich_alert_note(
     )
 
 
+async def _reject_legacy_silence_impersonation(request: Request):
+    from keep.api.routes.silences import reject_impersonation
+
+    try:
+        body = await request.json()
+    except ValueError:
+        return  # The normal request validator reports malformed JSON.
+    enrichments = body.get("enrichments") if isinstance(body, dict) else None
+    if isinstance(enrichments, dict) and set(enrichments) & {"dismissed", "dismissUntil", "silence"}:
+        reject_impersonation(request)
+
+
+def _handle_legacy_silence_compatibility(
+    session: Session,
+    authenticated_entity: AuthenticatedEntity,
+    fingerprints: list[str],
+    enrichments: dict,
+    dispose_on_new_alert: bool = False,
+):
+    """Legacy dismiss owns dedicated rules; Restore cannot cancel independent rules."""
+    from keep.api.bl.silences_bl import fail
+    from keep.api.models.db.alert import AlertEnrichment
+    from keep.api.models.db.tenant import Tenant
+    from keep.api.models.silence import UpdateSilenceCommand
+
+    if "silence" in enrichments or any(key.startswith("disposable_dismiss") for key in enrichments):
+        fail(422, "validation_error", "Silence metadata is managed by the registry")
+    if "dismissed" not in enrichments:
+        if "dismissUntil" in enrichments:
+            fail(422, "validation_error", "dismissUntil requires a dismiss command")
+        return
+
+    value = enrichments["dismissed"]
+    if isinstance(value, str) and value.strip().lower() in {"true", "false", "1", "0"}:
+        value = value.strip().lower() in {"true", "1"}
+    elif not isinstance(value, bool):
+        fail(422, "validation_error", "dismissed must be a boolean")
+
+    bl = SilencesBL(session, authenticated_entity, commit=False, origin="legacy-api")
+    bl.check_write_permission("write:silence" if value else "update:silence")
+    ends_at = None
+    if value:
+        try:
+            parsed = _parse_utc_datetime(enrichments.get("dismissUntil"))
+        except ValueError:
+            fail(422, "invalid_time", "Invalid dismissUntil", "dismissUntil")
+        ends_at = utc_string(parsed)
+        if parsed is not None and parsed <= utc_now():
+            fail(422, "invalid_time", "End must be in the future", "dismissUntil")
+
+    tenant_id = authenticated_entity.tenant_id
+    try:
+        # Serialize legacy writers and migration for this tenant, including first-time dismiss.
+        if session.get_bind().dialect.name == "sqlite":
+            connection = session.connection()
+            if not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+        session.exec(select(Tenant).where(Tenant.id == tenant_id).with_for_update()).first()
+        owners = {}
+        for fp in sorted(set(fingerprints)):
+            teams = check_alert_access(session, authenticated_entity, fp, for_write=True)
+            if len(teams) != 1:
+                fail(422, "invalid_selector", "Ambiguous fingerprint owner; use /silences with an explicit team")
+            owners[fp] = teams[0]
+
+        now = utc_now()
+        rules = session.exec(select(Silence).where(
+            Silence.tenant_id == tenant_id,
+            Silence.origin.in_(["legacy-api", "legacy-migration"]),
+            Silence.cancelled_at.is_(None),
+            or_(Silence.ends_at.is_(None), Silence.ends_at > now),
+        ).with_for_update()).all()
+        for fp, team_id in owners.items():
+            dedicated = [rule for rule in rules
+                          if rule.team_id == team_id
+                          and rule.correlation_id == f"legacy-dismiss:{fp}"
+                          and rule.selector == {"kind": "alert", "fingerprints": [fp]}]
+            if value:
+                comment = enrichments.get("note") or "Dismissed via legacy API"
+                if dedicated:
+                    for rule in dedicated:
+                        bl.update(rule.id, UpdateSilenceCommand.parse_obj({
+                            "schema_version": 1, "client_request_id": str(uuid4()),
+                            "expected_revision": rule.revision,
+                            "changes": {"ends_at": ends_at, "comment": comment},
+                            "correlation_id": f"legacy-dismiss:{fp}",
+                        }))
+                else:
+                    bl.create(CreateSilenceCommand(
+                        schema_version=1, team_id=team_id,
+                        selector=AlertSelector(kind="alert", fingerprints=[fp]),
+                        starts_at=None, ends_at=ends_at, comment=comment,
+                        correlation_id=f"legacy-dismiss:{fp}", client_request_id=uuid4(),
+                    ))
+            else:
+                for rule in dedicated:
+                    bl.cancel(rule.id, CancelSilenceCommand(
+                        schema_version=1, expected_revision=rule.revision,
+                        reason=f"Restored via legacy API for alert {fp}",
+                        correlation_id=f"legacy-dismiss:{fp}", client_request_id=uuid4(),
+                    ))
+            enrichment = session.exec(select(AlertEnrichment).where(
+                AlertEnrichment.tenant_id == tenant_id, AlertEnrichment.alert_fingerprint == fp,
+            ).with_for_update()).first()
+            if enrichment:
+                cleaned = dict(enrichment.enrichments or {})
+                for key in ("dismissed", "dismissUntil", "disposable_dismissed", "disposable_dismissUntil"):
+                    cleaned.pop(key, None)
+                enrichment.enrichments = cleaned
+                session.add(enrichment)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    # Legacy status fields must not make a cancelled registry rule look active in DTOs.
+    enrichments.pop("dismissed", None)
+    enrichments.pop("dismissUntil", None)
+    if value and enrichments.get("status") == AlertStatus.SUPPRESSED.value:
+        enrichments.pop("status")
+
+
 @router.post(
     "/batch_enrich",
+    dependencies=[Depends(_reject_legacy_silence_impersonation)],
     description="Enrich alerts by providing either a list of fingerprints or a CEL expression to select alerts. Examples for CEL: \"name.contains('CPU')\", \"labels.severity == 'critical'\", \"name.contains('Memory') && labels.region == 'us-east-1'\"",
 )
 def batch_enrich_alerts(
     enrich_data: BatchEnrichAlertRequestBody,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:alert"])
+        IdentityManagerFactory.get_auth_verifier(["update:alert"])
     ),
     dispose_on_new_alert: Optional[bool] = Query(
         False, description="Dispose on new alert"
@@ -843,18 +1013,14 @@ def batch_enrich_alerts(
     session: Session = Depends(get_session),
 ):
     tenant_id = authenticated_entity.tenant_id
+    if authenticated_entity.role != "admin" and set(enrich_data.enrichments) & {"zone", "team_id"}:
+        raise HTTPException(status_code=403, detail="Reserved alert enrichment")
     logger.info(
         "Enriching alerts in batch",
         extra={
             "tenant_id": tenant_id,
         },
     )
-
-    if (
-        "dismissed" in enrich_data.enrichments
-        and enrich_data.enrichments["dismissed"].lower() == "true"
-    ):
-        enrich_data.enrichments["status"] = AlertStatus.SUPPRESSED.value
 
     if not enrich_data.fingerprints and not enrich_data.cel:
         raise HTTPException(
@@ -880,6 +1046,7 @@ def batch_enrich_alerts(
             db_alerts, total_count = query_last_alerts(
                 tenant_id=tenant_id,
                 query=QueryDto(cel=enrich_data.cel),
+                allowed_team_ids=writable_team_ids(authenticated_entity),
             )
 
             if not db_alerts:
@@ -922,6 +1089,17 @@ def batch_enrich_alerts(
                 "tenant_id": tenant_id,
             },
         )
+
+    for fingerprint in fingerprints:
+        require_alert_access(authenticated_entity, fingerprint, for_write=True)
+
+    _handle_legacy_silence_compatibility(
+        session,
+        authenticated_entity,
+        fingerprints,
+        enrich_data.enrichments,
+        dispose_on_new_alert,
+    )
 
     # Common enrichment processing
     try:
@@ -1042,23 +1220,22 @@ def batch_enrich_alerts(
 
 @router.post(
     "/enrich",
+    dependencies=[Depends(_reject_legacy_silence_impersonation)],
     description="Enrich an alert",
 )
 def enrich_alert(
     enrich_data: EnrichAlertRequestBody,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:alert"])
+        IdentityManagerFactory.get_auth_verifier(["update:alert"])
     ),
     dispose_on_new_alert: Optional[bool] = Query(
         False, description="Dispose on new alert"
     ),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
-    if (
-        "dismissed" in enrich_data.enrichments
-        and enrich_data.enrichments["dismissed"].lower() == "true"
-    ):
-        enrich_data.enrichments["status"] = AlertStatus.SUPPRESSED.value
+    require_alert_access(authenticated_entity, enrich_data.fingerprint, for_write=True)
+    if authenticated_entity.role != "admin" and set(enrich_data.enrichments) & {"zone", "team_id"}:
+        raise HTTPException(status_code=403, detail="Reserved alert enrichment")
 
     tenant_id = authenticated_entity.tenant_id
     logger.info(
@@ -1090,6 +1267,14 @@ def _enrich_alert(
             "fingerprint": enrich_data.fingerprint,
             "tenant_id": tenant_id,
         },
+    )
+
+    _handle_legacy_silence_compatibility(
+        session,
+        authenticated_entity,
+        [enrich_data.fingerprint],
+        enrich_data.enrichments,
+        dispose_on_new_alert,
     )
 
     try:
@@ -1187,9 +1372,12 @@ def unenrich_alert(
     enrich_data: UnEnrichAlertRequestBody,
     pusher_client: Pusher = Depends(get_pusher_client),
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:alert"])
+        IdentityManagerFactory.get_auth_verifier(["update:alert"])
     ),
 ) -> dict[str, str]:
+    require_alert_access(authenticated_entity, enrich_data.fingerprint, for_write=True)
+    if authenticated_entity.role != "admin" and set(enrich_data.enrichments) & {"zone", "team_id"}:
+        raise HTTPException(status_code=403, detail="Reserved alert enrichment")
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Un-Enriching alert",
@@ -1312,7 +1500,10 @@ async def search_alerts(
             "Searched alerts",
             extra={"tenant_id": tenant_id},
         )
-        return filtered_alerts
+        accessible = accessible_alert_fingerprints(
+            authenticated_entity, {alert.fingerprint for alert in filtered_alerts}
+        )
+        return [alert for alert in filtered_alerts if alert.fingerprint in accessible]
     except celpy.celparser.CELParseError as e:
         logger.warning("Failed to parse the search query", extra={"error": str(e)})
         return JSONResponse(
@@ -1341,6 +1532,8 @@ def get_multiple_fingerprint_alert_audit(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> list[AlertAuditDto]:
+    for fingerprint in fingerprints:
+        require_alert_access(authenticated_entity, fingerprint)
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Fetching alert audit",
@@ -1374,6 +1567,7 @@ def get_alert_audit(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ) -> list[AlertAuditDto]:
+    require_alert_access(authenticated_entity, fingerprint)
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Fetching alert audit",
@@ -1398,6 +1592,8 @@ def get_alert_quality(
     time_stamp: TimeStampFilter = Depends(get_time_stamp_filter),
     fields: Optional[List[str]] = Query([]),
 ):
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global alert metrics require admin")
     logger.info(
         "Fetching alert quality metrics per provider",
         extra={"tenant_id": authenticated_entity.tenant_id, "fields": fields},
@@ -1424,6 +1620,8 @@ def get_error_alerts(
     ),
     limit: int = 1000,
 ) -> list[AlertErrorDto]:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Unassigned alerts require admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Fetching error alerts from DB",
@@ -1459,7 +1657,7 @@ def get_error_alerts(
 def dismiss_error_alerts(
     request: DismissAlertRequest = None,
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["write:alert"])
+        IdentityManagerFactory.get_auth_verifier(["delete:alert"])
     ),
 ) -> dict:
     tenant_id = authenticated_entity.tenant_id

@@ -20,10 +20,12 @@ export const TopologyPollingContextProvider: React.FC<{
 
   useEffect(() => {
     const handleIncoming = (data: TopologyUpdate) => {
-      toast.success(
-        `Topology pulled from ${data.providerId} (${data.providerType})`,
-        { position: "top-right" }
-      );
+      if (data.providerId && data.providerType) {
+        toast.success(
+          `Topology pulled from ${data.providerId} (${data.providerType})`,
+          { position: "top-right" }
+        );
+      }
       setPollTopology((prev) => prev + 1);
     };
 

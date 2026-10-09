@@ -1,0 +1,7 @@
+name: Configured component name
+priority: 10
+attribute: name
+regex: (?P<component>[^:]+):.*
+condition: 'true'
+pre: true
+disabled: false

@@ -1,0 +1,435 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: incident-policy
+tenant_id: keep
+revision: example-b
+keep_url: https://keep.example.org
+access:
+  path: team-policy.yaml
+  sha256: 4b8f98ac3a626ef02bd2bde34869abfe3d9fccdbd5f900458b8729a8164c4af2
+mappings:
+- id: ownership
+  artifact:
+    path: mappings/ownership.yaml
+    sha256: 1e22aebc0b4ad3b30234b0a56c7796b1b62d59350f3c769f3363232d4ec564d5
+workflows:
+- id: record-evidence
+  artifact:
+    path: workflows/record-evidence.yaml
+    sha256: b665685a3e0eb983f560304f97cc822e43f311755411e96318e6264bec3de89a
+normalization:
+- id: explicit-labels
+  team_ids:
+  - harbor
+  - lumen
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - &id001
+    name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - &id002
+    name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - &id003
+    name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - &id004
+    name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - &id005
+    name: service
+    sources:
+    - labels.application
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+  - &id006
+    name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: literal
+      value: lab
+- id: pod-name-fallback
+  team_ids:
+  - harbor
+  - lumen
+  priority: 10
+  match: has(labels.pod) && !(has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '') && !(has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '')
+  fields:
+  - *id001
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  - name: workload
+    sources:
+    - labels.pod
+    extract:
+      pattern: ^(.*)-[a-z0-9]{10}-[a-z0-9]{5}$
+      group: 1
+    missing:
+      mode: mark_unknown
+presentations:
+- id: workload
+  title: 'workload: {{ normalized.workload }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Take
+  - command: resolve
+    label: Close
+  - command: silence
+    label: Mute
+  severity_colors:
+    critical: '#d32f2f'
+- id: pvc
+  title: 'pvc: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Pvc
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Take
+  - command: resolve
+    label: Close
+  - command: silence
+    label: Mute
+  severity_colors:
+    critical: '#d32f2f'
+- id: node
+  title: 'node: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Node
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Take
+  - command: resolve
+    label: Close
+  - command: silence
+    label: Mute
+  severity_colors:
+    critical: '#d32f2f'
+- id: service
+  title: 'service: {{ normalized.service }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.service
+    label: Service
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Take
+  - command: resolve
+    label: Close
+  - command: silence
+    label: Mute
+  severity_colors:
+    critical: '#d32f2f'
+correlation_overlap: first_match
+correlation:
+- id: workload
+  team_ids:
+  - harbor
+  - lumen
+  priority: 40
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'workload'
+  group_by: &id007
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id007
+  missing_required: skip_correlation
+  window_seconds: 45
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: workload
+  automation_ref: response
+- id: pvc
+  team_ids:
+  - harbor
+  - lumen
+  priority: 30
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'pvc'
+  group_by: &id008
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id008
+  missing_required: skip_correlation
+  window_seconds: 45
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: pvc
+  automation_ref: response
+- id: node
+  team_ids:
+  - harbor
+  - lumen
+  priority: 20
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'node'
+  group_by: &id009
+  - normalized.cluster
+  - normalized.resource
+  required_fields: *id009
+  missing_required: skip_correlation
+  window_seconds: 45
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: node
+  automation_ref: response
+- id: service
+  team_ids:
+  - harbor
+  - lumen
+  priority: 10
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'service'
+  group_by: &id010
+  - normalized.cluster
+  - normalized.service
+  required_fields: *id010
+  missing_required: skip_correlation
+  window_seconds: 45
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: service
+  automation_ref: response
+lifecycle:
+- id: standard
+  resolve_on: all_resolved
+  reopen:
+    mode: new_incident
+    within_seconds: 60
+    ack: reset
+    assignee: preserve
+  flapping:
+    enabled: true
+    window_seconds: 120
+    transition_threshold: 2
+    reset_after_seconds: 300
+  clock: event_time
+  late_event_policy: history_only
+automation:
+- id: response
+  team_ids:
+  - harbor
+  - lumen
+  sla_start: last_reopen
+  ack_deadline_seconds: 120
+  stop_on:
+  - acknowledged
+  - resolved
+  on_reopen: reset
+  levels:
+  - id: first
+    after_seconds: 120
+    contact_refs:
+    - harbor-oncall
+    - lumen-oncall
+    destination_refs:
+    - harbor-json
+    - lumen-json
+    workflow_refs:
+    - record-evidence
+    repeat_every_seconds: 120
+    repeat_limit: 3
+  reminder:
+    every_seconds: 240
+    destination_refs:
+    - harbor-json
+    - lumen-json
+  ticket:
+    workflow_ref: record-evidence
+    url_template: https://tickets.example.org/incident/{{ incident.id }}
+contacts:
+- id: harbor-oncall
+  team_id: harbor
+  label: Harbor on-call
+  addresses:
+  - transport_ref: json
+    address: harbor-oncall
+- id: lumen-oncall
+  team_id: lumen
+  label: Lumen on-call
+  addresses:
+  - transport_ref: json
+    address: lumen-oncall
+routing_overlap: fanout
+routes:
+- id: harbor-route
+  team_ids:
+  - harbor
+  priority: 100
+  match: 'true'
+  event_types: &id011
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - harbor-json
+  contact_refs:
+  - harbor-oncall
+  presentation_ref: workload
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+- id: lumen-route
+  team_ids:
+  - lumen
+  priority: 100
+  match: 'true'
+  event_types: *id011
+  destination_refs:
+  - lumen-json
+  contact_refs:
+  - lumen-oncall
+  presentation_ref: workload
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+transports:
+- id: json
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: http://fixture-receiver.keep-lab.svc.cluster.local:8080
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 3
+    retry:
+      max_attempts: 3
+    rate_limit:
+      per_second: 2
+      burst: 2
+    debounce_seconds: 0
+destinations:
+- id: harbor-json
+  team_id: harbor
+  transport_ref: json
+  options:
+    path: /events/harbor
+- id: lumen-json
+  team_id: lumen
+  transport_ref: json
+  options:
+    path: /events/lumen
+proof_profiles:
+- id: operator-proof
+  issuer: https://identity.example.org/realms/keep
+  audience: keep-operator
+  jwks_url: https://identity.example.org/realms/keep/protocol/openid-connect/certs
+  algorithms:
+  - RS256
+  authorized_parties:
+  - keep-actions
+  required_claims:
+    typ: Bearer
+service_clients:
+- id: automation-actions
+  origin: automation-adapter
+  auth_ref: env:KEEP_AUTOMATION_CLIENT_TOKEN
+  team_ids:
+  - harbor
+  - lumen
+  proof_profile_refs:
+  - operator-proof
+  scopes:
+  - read:silence
+  - write:silence
+  - update:silence
+  - update:incident
+subscribers:
+- id: harbor-silences
+  team_ids:
+  - harbor
+  event_types: &id012
+  - silence.created
+  - silence.updated
+  - silence.activated
+  - silence.cancelled
+  - silence.expired
+  destination_refs:
+  - harbor-json
+- id: lumen-silences
+  team_ids:
+  - lumen
+  event_types: *id012
+  destination_refs:
+  - lumen-json
+dispatch:
+  scan_interval_seconds: 2
+  batch_size: 100
+  lease_seconds: 60
+  snapshot_page_size: 100

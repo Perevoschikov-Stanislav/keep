@@ -1,0 +1,17 @@
+ruleName: other
+sqlQuery:
+  sql: family == "other" && !has(labels.namespace)
+  params: {}
+celQuery: family == "other" && !has(labels.namespace)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- alertname
+- svc
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · {{ alert.svc }}: {{ alert.alertname }}'
+requireApprove: false
+threshold: 1

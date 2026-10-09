@@ -1,0 +1,393 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: automation-example
+tenant_id: keep
+revision: automation-b
+keep_url: https://keep.example.net
+access:
+  path: teams.yaml
+    sha256: adb02f317bd853662fb377b346012a0d94a71fb26a6ce5559b0b0b246fa8aa2d
+mappings:
+- id: component-ownership
+  artifact:
+    path: mapping.yaml
+    sha256: 1526abf6c45cac9b0c432a65d75caa18d51f1f385ae64ff1d8e6f3af058591df
+extraction:
+- id: component-name
+  artifact:
+    path: extraction.yaml
+    sha256: 0d74a0de51efa14a60e526284dad4e560e1c293c8a1be7d2ab8ae06653fbbe86
+workflows:
+- id: record-example
+  artifact:
+    path: workflow.yaml
+    sha256: 634e84920b6e3221f215d4ba3337ca905293edaa34160884aa596bef9a0df29a
+normalization:
+- id: workload-owner
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 200
+  match: has(labels.kind) && labels.kind == 'workload' && ((has(labels.workload) &&
+    type(labels.workload) == string && labels.workload != '') || (has(labels.owner)
+    && type(labels.owner) == string && labels.owner != ''))
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+- id: explicit-labels
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+- id: pod-fallback
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 10
+  match: has(labels.pod)
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.pod
+    missing:
+      mode: mark_unknown
+    extract:
+      pattern: ^(.*)-[a-z0-9]{10}-[a-z0-9]{5}$
+      group: 1
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+presentations:
+- id: workload
+  title: 'workload: {{ normalized.workload }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: pvc
+  title: 'pvc: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Pvc
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: node
+  title: 'node: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Node
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: service
+  title: 'service: {{ normalized.service }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.service
+    label: Service
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+lifecycle:
+- id: basic
+  resolve_on: never
+  reopen:
+    mode: new_incident
+    within_seconds: 0
+    ack: reset
+    assignee: clear
+  flapping:
+    enabled: true
+    window_seconds: 120
+    transition_threshold: 2
+    reset_after_seconds: 60
+  clock: event_time
+  late_event_policy: history_only
+correlation_overlap: parallel
+correlation:
+- id: workload
+  team_ids: &id002
+  - frontend-west
+  - network-east
+  priority: 100
+  match: normalized.kind == 'workload'
+  group_by: &id001
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.workload
+  required_fields: *id001
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: workload
+  automation_ref: response
+- id: pvc
+  team_ids: *id002
+  priority: 99
+  match: normalized.kind == 'pvc'
+  group_by: &id003
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id003
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: pvc
+  automation_ref: response
+- id: node
+  team_ids: *id002
+  priority: 98
+  match: normalized.kind == 'node'
+  group_by: &id004
+  - normalized.cluster
+  - normalized.resource
+  required_fields: *id004
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: node
+  automation_ref: response
+- id: service
+  team_ids: *id002
+  priority: 97
+  match: normalized.kind == 'service'
+  group_by: &id005
+  - normalized.cluster
+  - normalized.service
+  required_fields: *id005
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: service
+  automation_ref: response
+transports:
+- id: primary
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://primary.example.net
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+- id: secondary
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://secondary.example.net
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+destinations:
+- id: frontend-west-primary
+  team_id: frontend-west
+  transport_ref: primary
+  options:
+    path: /events/frontend-west
+- id: frontend-west-secondary
+  team_id: frontend-west
+  transport_ref: secondary
+  options:
+    path: /events/frontend-west
+- id: network-east-primary
+  team_id: network-east
+  transport_ref: primary
+  options:
+    path: /events/network-east
+- id: network-east-secondary
+  team_id: network-east
+  transport_ref: secondary
+  options:
+    path: /events/network-east
+contacts:
+- id: frontend-west-oncall
+  team_id: frontend-west
+  label: frontend-west on call
+  addresses:
+  - transport_ref: primary
+    address: frontend-west-primary
+  - transport_ref: secondary
+    address: frontend-west-secondary
+- id: network-east-oncall
+  team_id: network-east
+  label: network-east on call
+  addresses:
+  - transport_ref: primary
+    address: network-east-primary
+  - transport_ref: secondary
+    address: network-east-secondary
+automation:
+- id: response
+  team_ids:
+  - frontend-west
+  - network-east
+  sla_start: created
+  ack_deadline_seconds: 45
+  stop_on:
+  - resolved
+  on_reopen: reset
+  on_policy_update: reschedule
+  execution_lease_seconds: 300
+  levels:
+  - id: oncall
+    after_seconds: 45
+    contact_refs: &id006
+    - frontend-west-oncall
+    - network-east-oncall
+    destination_refs: &id007
+    - frontend-west-primary
+    - frontend-west-secondary
+    - network-east-primary
+    - network-east-secondary
+    workflow_refs:
+    - record-example
+    repeat_every_seconds: 15
+    repeat_limit: 0
+  - id: escalated
+    after_seconds: 120
+    contact_refs: *id006
+    destination_refs: *id007
+    workflow_refs:
+    - record-example
+    repeat_every_seconds: 30
+    repeat_limit: 0
+  reminder:
+    every_seconds: 90
+    contact_refs: *id006
+    destination_refs: *id007
+  ticket:
+    workflow_ref: record-example
+    url_template: https://tickets.example.net/incidents/{{ incident.id }}
+    enrichment_key: ticket_url

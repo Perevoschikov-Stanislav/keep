@@ -354,7 +354,8 @@ CONFIG = {
             "format": "%(asctime)s - %(thread)s %(otelTraceID)s %(threadName)s %(levelname)s - %(message)s",
         },
         "uvicorn_access": {  # Add new formatter for uvicorn.access
-            "format": "%(asctime)s - %(otelTraceID)s - %(threadName)s - %(message)s"
+            "format": "%(asctime)s - %(otelTraceID)s - %(threadName)s - %(message)s",
+            "defaults": {"otelTraceID": "-"},
         },
     },
     "handlers": {

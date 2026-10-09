@@ -78,6 +78,7 @@ class IncidentStatus(enum.Enum):
 class Incident(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     tenant_id: str = Field(foreign_key="tenant.id")
+    team_id: str | None = Field(default=None, index=True)
     tenant: Tenant = Relationship()
 
     # Auto-incrementing number per tenant
@@ -85,6 +86,12 @@ class Incident(SQLModel, table=True):
 
     user_generated_name: str | None = Field(sa_column=Column(TEXT))
     ai_generated_name: str | None = Field(sa_column=Column(TEXT))
+    generated_name: str | None = Field(default=None, sa_column=Column(TEXT))
+    normalization_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
+    correlation_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
+    lifecycle_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
+    automation_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
+    notification_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
 
     user_summary: str = Field(sa_column=Column(TEXT))
     generated_summary: str = Field(sa_column=Column(TEXT))
@@ -213,6 +220,8 @@ class Incident(SQLModel, table=True):
 def get_next_running_number(session, tenant_id: str) -> int:
     """Get the next running number for a tenant."""
     try:
+        # All incident producers share allocation, including manual creation.
+        session.exec(select(Tenant).where(Tenant.id == tenant_id).with_for_update(key_share=True)).first()
         # Get the maximum running number for the tenant
         result = session.exec(
             select(func.max(Incident.running_number)).where(

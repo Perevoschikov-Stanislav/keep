@@ -1,0 +1,20 @@
+ruleName: unlabeled
+sqlQuery:
+  sql: family == "lis" && !has(labels.upstream) || family in ["workload", "db"] &&
+    !has(labels.namespace) || family == "probe" && !has(labels.namespace) || family
+    == "k8s-node" && !has(labels.node) || family == "node" && !has(labels.instance)
+  params: {}
+celQuery: family == "lis" && !has(labels.upstream) || family in ["workload", "db"]
+  && !has(labels.namespace) || family == "probe" && !has(labels.namespace) || family
+  == "k8s-node" && !has(labels.node) || family == "node" && !has(labels.instance)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- alertname
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }}: {{ alert.alertname }}'
+requireApprove: false
+threshold: 1

@@ -22,6 +22,10 @@ from keep.api.bl.enrichments_bl import EnrichmentsBl
 from keep.api.bl.incidents_bl import IncidentBl
 from keep.api.bl.maintenance_windows_bl import MaintenanceWindowsBl
 from keep.api.consts import KEEP_CORRELATION_ENABLED, MAINTENANCE_WINDOW_ALERT_STRATEGY, fingerprints_for_poll_payload
+from keep.api.core.incident_configuration import configured_operation
+from keep.api.core.event_normalization import (
+    DERIVED, defer_event_fingerprints, normalize_event, prepared_fingerprints,
+)
 from keep.api.core.db import (
     bulk_upsert_alert_fields,
     enrich_alerts_with_incidents,
@@ -55,6 +59,7 @@ from keep.api.utils.enrichment_helpers import (
     convert_db_alerts_to_dto_alerts,
     calculated_unresolved_counter,
 )
+from keep.identitymanager.team_policy import get_team_policy, is_team_scoping_active
 from keep.providers.providers_factory import ProvidersFactory
 from keep.rulesengine.rulesengine import RulesEngine
 from keep.workflowmanager.workflowmanager import WorkflowManager
@@ -69,6 +74,9 @@ KEEP_ALERT_FIELDS_ENABLED = (
 KEEP_MAINTENANCE_WINDOWS_ENABLED = (
     os.environ.get("KEEP_MAINTENANCE_WINDOWS_ENABLED", "true") == "true"
 )
+KEEP_MAINTENANCE_DESTRUCTIVE_DROP = (
+    os.environ.get("KEEP_MAINTENANCE_DESTRUCTIVE_DROP", "true").lower() == "true"
+)
 KEEP_AUDIT_EVENTS_ENABLED = (
     os.environ.get("KEEP_AUDIT_EVENTS_ENABLED", "true") == "true"
 )
@@ -77,7 +85,6 @@ KEEP_CALCULATE_START_FIRING_TIME_ENABLED = (
 )
 
 logger = logging.getLogger(__name__)
-
 
 def __internal_prepartion(
     alerts: list[AlertDto], fingerprint: str | None, api_key_name: str | None
@@ -91,6 +98,10 @@ def __internal_prepartion(
         api_key_name (str | None): API key name to set on the alerts (that were used to push them)
     """
     for alert in alerts:
+        if getattr(alert, "silence", None) is not None:
+            alert.dismissed = False
+            alert.dismissUntil = None
+            alert.silence = None
         try:
             if not alert.source:
                 alert.source = ["keep"]
@@ -138,16 +149,15 @@ def __save_to_db(
     timestamp_forced: datetime.datetime | None = None,
 ):
     try:
-        # keep raw events in the DB if the user wants to
-        # this is mainly for debugging and research purposes
-        if KEEP_STORE_RAW_ALERTS:
+        # Normalization retains its original source even when legacy raw storage is off.
+        if KEEP_STORE_RAW_ALERTS or any(event.normalization for event in formatted_events + deduplicated_events):
             if isinstance(raw_events, dict):
                 raw_events = [raw_events]
 
             for raw_event in raw_events:
                 alert = AlertRaw(
                     tenant_id=tenant_id,
-                    raw_alert=raw_event,
+                    raw_alert=(json.loads(raw_event.json()) if isinstance(raw_event, AlertDto) else raw_event),
                     provider_type=provider_type,
                 )
                 session.add(alert)
@@ -201,7 +211,9 @@ def __save_to_db(
                     fingerprint=formatted_event.fingerprint,
                     limit=1,
                 )
-                previous_alert = convert_db_alerts_to_dto_alerts(previous_alert)
+                previous_alert = convert_db_alerts_to_dto_alerts(
+                    previous_alert, with_silences=False
+                )
                 formatted_event.firingStartTime = calculated_start_firing_time(
                     formatted_event, previous_alert
                 )
@@ -232,7 +244,7 @@ def __save_to_db(
                     },
                 )
 
-            # Post format enrichment
+            # Post format enrichment (normalization uses a pure projection before dedup).
             try:
                 formatted_event = enrichments_bl.run_extraction_rules(formatted_event)
             except Exception:
@@ -248,10 +260,11 @@ def __save_to_db(
 
             alert_args = {
                 "tenant_id": tenant_id,
+                "team_id": formatted_event.team_id,
                 "provider_type": (
                     provider_type if provider_type else formatted_event.source[0]
                 ),
-                "event": formatted_event.dict(),
+                "event": formatted_event.to_ingestion_dict(),
                 "provider_id": provider_id,
                 "fingerprint": formatted_event.fingerprint,
                 "alert_hash": formatted_event.alert_hash,
@@ -291,6 +304,11 @@ def __save_to_db(
             except Exception:
                 logger.exception("Failed to run mapping rules")
 
+            # Keep ownership on the event itself. Fingerprint enrichments can
+            # carry a zone from an older event and must not decide access.
+            mapped_zone = getattr(formatted_event, "zone", None)
+            policy = get_team_policy()
+
             alert_enrichment = get_enrichment_with_session(
                 session=session,
                 tenant_id=tenant_id,
@@ -298,11 +316,37 @@ def __save_to_db(
             )
             if alert_enrichment:
                 for enrichment in alert_enrichment.enrichments:
+                    if enrichment.split(".")[0] in DERIVED:
+                        continue
+                    if enrichment == "zone" and policy:
+                        continue
                     # set the enrichment
                     value = alert_enrichment.enrichments[enrichment]
                     if isinstance(value, str):
                         value = value.strip()
                     setattr(formatted_event, enrichment, value)
+            alert.team_id = policy.team_for_zone(mapped_zone) if policy else None
+            formatted_event.team_id = alert.team_id
+            # Mapping/extraction/enrichment cannot supply or carry a foreign projection.
+            derived_snapshot = {key: alert.event.get(key) for key in DERIVED}
+            for key, value in derived_snapshot.items():
+                setattr(formatted_event, key, value)
+            if alert.event.get("normalization") and alert.event.get("team_id") != alert.team_id:
+                for key in DERIVED:
+                    setattr(formatted_event, key, None)
+                    derived_snapshot[key] = None
+            event_snapshot = dict(alert.event)
+            for key, value in derived_snapshot.items():
+                if value is None:
+                    event_snapshot.pop(key, None)
+                else:
+                    event_snapshot[key] = value
+            event_snapshot["team_id"] = alert.team_id
+            alert.event = sanitize_alert(event_snapshot)
+            if mapped_zone is not None:
+                event_snapshot = dict(alert.event)
+                event_snapshot["zone"] = mapped_zone
+                alert.event = sanitize_alert(event_snapshot)
             enriched_formatted_events.append(formatted_event)
 
         logger.info("Checking for incidents to resolve", extra={"tenant_id": tenant_id})
@@ -394,7 +438,9 @@ def __handle_formatted_events(
     )
 
     # first, check for maintenance windows
-    if KEEP_MAINTENANCE_WINDOWS_ENABLED:
+    # in the new regime (KEEP_MAINTENANCE_DESTRUCTIVE_DROP=false), events are preserved
+    # and suppressed by Silence Gate, instead of being dropped destructively.
+    if KEEP_MAINTENANCE_WINDOWS_ENABLED and KEEP_MAINTENANCE_DESTRUCTIVE_DROP:
         with tracer.start_as_current_span("process_event_maintenance_windows_check"):
             maintenance_windows_bl = MaintenanceWindowsBl(
                 tenant_id=tenant_id, session=session
@@ -420,6 +466,11 @@ def __handle_formatted_events(
                     extra={"tenant_id": tenant_id},
                 )
                 return
+    elif KEEP_MAINTENANCE_WINDOWS_ENABLED:
+        logger.debug(
+            "Maintenance windows active; destructive drop is disabled. Events preserved for Silence Gate.",
+            extra={"tenant_id": tenant_id},
+        )
 
     with tracer.start_as_current_span("process_event_deduplication"):
         # second, filter out any deduplicated events
@@ -470,7 +521,7 @@ def __handle_formatted_events(
                     },
                 )
                 fields = []
-                for key, value in enriched_formatted_event.dict().items():
+                for key, value in enriched_formatted_event.to_ingestion_dict().items():
                     if isinstance(value, dict):
                         for nested_key in value.keys():
                             fields.append(f"{key}.{nested_key}")
@@ -640,7 +691,7 @@ def __handle_formatted_events(
                         f"private-{tenant_id}",
                         "poll-presets",
                         json.dumps(
-                            [p.name.lower() for p in presets_do_update], default=str
+                            [] if is_team_scoping_active() else [p.name.lower() for p in presets_do_update], default=str
                         ),
                     )
                 except Exception:
@@ -659,6 +710,8 @@ def __handle_formatted_events(
 
 
 @processing_time_summary.time()
+@configured_operation
+@defer_event_fingerprints
 def process_event(
     ctx: dict,  # arq context
     tenant_id: str,
@@ -806,6 +859,28 @@ def process_event(
                     provider_type=provider_type,
                 )
 
+            # Resolve ownership using this event's mappings, without persisting
+            # fingerprint enrichments under a key which has not been calculated yet.
+            from keep.api.core.incident_configuration import active_configuration
+            snapshot = active_configuration(tenant_id)
+            has_normalization = bool(snapshot and snapshot["bundle"].get("normalization"))
+            policy = get_team_policy()
+            for formatted in event:
+                projection = formatted.copy(deep=True)
+                if has_normalization or policy:
+                    projection = enrichments_bl.run_extraction_rules(projection, persist=False)
+                    enrichments_bl.run_mapping_rules(projection, persist=False)
+                formatted.team_id = policy.team_for_zone(getattr(projection, "zone", None)) if policy else None
+                normalize_event(tenant_id, formatted, projection=projection)
+            with prepared_fingerprints():
+                try:
+                    fingerprint_provider = ProvidersFactory.get_provider_class(provider_type or "keep")
+                except Exception:
+                    fingerprint_provider = ProvidersFactory.get_provider_class("keep")
+                fingerprint_provider.apply_custom_deduplication_rule(
+                    event, tenant_id=tenant_id, provider_id=provider_id, provider_type=provider_type,
+                )
+
             with tracer.start_as_current_span("process_event_internal_preparation"):
                 __internal_prepartion(event, fingerprint, api_key_name)
 
@@ -898,7 +973,7 @@ def __save_error_alerts(
             # Convert AlertDto to dict if needed
             if isinstance(raw_event, AlertDto):
                 logger.info("Converting AlertDto to dict")
-                raw_event = raw_event.dict()
+                raw_event = raw_event.to_ingestion_dict()
 
             # TODO: change to debug
             logger.debug(

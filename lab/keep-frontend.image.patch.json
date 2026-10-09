@@ -1,0 +1,41 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "keep",
+            "image": "keep-ui:lab-usability-20261008",
+            "env": [
+              {
+                "name": "TMPDIR",
+                "value": "/state"
+              },
+              {
+                "name": "TEMP",
+                "value": "/state"
+              },
+              {
+                "name": "TMP",
+                "value": "/state"
+              },
+              {
+                "name": "POSTHOG_DISABLED",
+                "value": "true"
+              },
+              {
+                "name": "SENTRY_DISABLED",
+                "value": "true"
+              },
+              {
+                "name": "KEEP_OSS_ONLY",
+                "value": "true"
+              }
+            ],
+            "imagePullPolicy": "Never"
+          }
+        ]
+      }
+    }
+  }
+}

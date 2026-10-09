@@ -20,7 +20,12 @@ from keep.api.models.db.mapping import *
 from keep.api.models.db.preset import *
 from keep.api.models.db.provider import *
 from keep.api.models.db.secret import *
+from keep.api.models.db.silence import *
 from keep.api.models.db.rule import *
+from keep.api.models.db.incident_correlation import *
+from keep.api.models.db.incident_automation import *
+from keep.api.models.db.incident_notification import *
+from keep.api.models.db.incident_migration import *
 from keep.api.models.db.statistics import *
 from keep.api.models.db.tenant import *
 from keep.api.models.db.topology import *

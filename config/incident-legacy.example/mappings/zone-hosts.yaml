@@ -1,0 +1,12 @@
+name: zone-hosts
+description: Zone overrides by host
+priority: 90
+type: csv
+matchers:
+- - cluster
+  - instance
+rows:
+- cluster: ^production-cluster$
+  instance: //(monitoring|ticketing)\.
+  zone: IT
+  env_kind: internal

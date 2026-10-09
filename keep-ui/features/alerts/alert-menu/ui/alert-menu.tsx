@@ -47,6 +47,8 @@ import {
 } from "@/components/ui/ImagePreviewTooltip";
 import { useExpandedRows } from "@/utils/hooks/useExpandedRows";
 import { useConfig } from "@/utils/hooks/useConfig";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
+import { showErrorToast } from "@/shared/ui";
 
 interface Props {
   alert: AlertDto;
@@ -84,6 +86,8 @@ export function AlertMenu({
   toggleSidebar,
 }: Props) {
   const api = useApi();
+  const { can } = useUserPermissions();
+  const canEdit = can("update:alert", alert);
   const router = useRouter();
   const { data: appConfig } = useConfig();
   const { data: executions } = appConfig?.KEEP_WF_LIST_EXTENDED_INFO === true
@@ -173,7 +177,7 @@ export function AlertMenu({
 
       if (params.newParams) {
         Object.entries(params.newParams).forEach(([key, value]) =>
-          currentParams.append(key, value)
+          currentParams.set(key, value)
         );
       }
 
@@ -306,6 +310,7 @@ export function AlertMenu({
       )}
       {setTicketModalAlert && (
         <Button
+          disabled={!canEdit && !ticketUrl}
           variant="light"
           onClick={(e) => {
             e.stopPropagation();
@@ -355,7 +360,8 @@ export function AlertMenu({
             setNoteModalAlert(alert);
           }}
           className={actionIconButtonClassName}
-          tooltip={note ? "Edit Note" : "Add Note"}
+          tooltip={canEdit ? (note ? "Edit Note" : "Add Note") : "Read only"}
+          disabled={!canEdit && !note}
           icon={() => (
             <Icon
               icon={note ? RiStickyNoteLine : RiStickyNoteAddLine}
@@ -423,8 +429,12 @@ export function AlertMenu({
           typeof alert.lastReceived === "string"
             ? alert.lastReceived
             : alert.lastReceived.toISOString();
-        await api.post(`/alerts/${fingerprint}/assign/${lastReceived}`);
-        await mutate();
+        try {
+          await api.post(`/alerts/${fingerprint}/assign/${lastReceived}`);
+          await mutate();
+        } catch (error) {
+          showErrorToast(error);
+        }
       }
     },
     [alert, fingerprint, api, mutate]
@@ -517,11 +527,11 @@ export function AlertMenu({
         ),
         label: method.name,
         onClick: () => openMethodModal(method),
-        disabled: !isMethodEnabled(method),
+        disabled: !can("write:providers") || !isMethodEnabled(method),
       })) ?? []),
       {
         icon: IoNotificationsOffOutline,
-        label: alert.dismissed ? "Restore" : "Dismiss",
+        label: alert.silence?.silenced || alert.dismissed ? "Unsilence" : "Silence",
         onClick: onDismiss,
       },
       {
@@ -555,8 +565,17 @@ export function AlertMenu({
   );
 
   const visibleMenuItems = useMemo(
-    () => menuItems.filter((item) => item.show !== false),
-    [menuItems]
+    () => menuItems.filter((item) => item.show !== false).map((item) => {
+      const scope = ({
+        "Run Workflow": "execute:workflows", "Workflow": "write:workflows",
+        "Enrich": "update:alert", "Self-Assign": "update:alert",
+        "Restore": "update:silence", "Dismiss": "write:silence",
+        "Silence": "write:silence", "Unsilence": "update:silence",
+        "Change Status": "update:alert", "Correlate Incident": "write:incident",
+      } as Record<string, string>)[item.label];
+      return { ...item, disabled: item.disabled || (!!scope && !can(scope, alert)) };
+    }),
+    [menuItems, can, alert]
   );
 
   if (isInSidebar) {
@@ -573,6 +592,7 @@ export function AlertMenu({
                   toggleSidebar?.();
                 }}
                 disabled={item.disabled}
+                title={item.disabled ? "Read only: this action is not allowed for your role or team" : undefined}
                 className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 rounded-tremor-default"
               >
                 <Icon className="w-4 h-4" />
@@ -600,6 +620,7 @@ export function AlertMenu({
             label={item.label}
             onClick={item.onClick}
             disabled={item.disabled}
+            title={item.disabled ? "Read only: this action is not allowed for your role or team" : undefined}
           />
         ))}
       </DropdownMenu.Menu>

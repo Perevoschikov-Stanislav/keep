@@ -90,67 +90,24 @@ def test_is_idempotent(monkeypatch, db_session):
     assert first_ids == second_ids
 
 
-def test_adopts_existing_ui_rule_with_matching_name(monkeypatch, db_session):
-    """A UI-created rule (is_provisioned=False) with the same name as a manifest
-    gets adopted: is_provisioned flips to True, content overwritten, DB id
-    preserved, AND fields not in the manifest schema (disabled / override /
-    condition) reset to model defaults — the manifest is the source of truth.
-    """
+def test_rejects_ui_rule_with_matching_name(monkeypatch, db_session):
     with Session(db.engine) as session:
-        ui_rule = MappingRule(
-            tenant_id=SINGLE_TENANT_UUID,
-            name="example-prometheus-mapping",
-            description="created via UI",
-            priority=99,
-            matchers=[["something-different"]],
-            type="csv",
-            rows=[{"x": "y"}],
-            created_by="ui-user@example.com",
-            is_provisioned=False,
-            # Fields NOT in MappingRuleDtoIn — should be reset on adoption
-            disabled=True,
-            override=False,
-            condition="some.ui.set.condition",
-        )
-        session.add(ui_rule)
+        rule = MappingRule(tenant_id=SINGLE_TENANT_UUID, name="example-prometheus-mapping",
+                           priority=99, matchers=[["namespace"]], rows=[{"namespace": "manual"}])
+        session.add(rule)
         session.commit()
-        ui_rule_id = ui_rule.id
-
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_ONE)
-    provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
-
-    rules = _all_mapping_rules()
-    assert len(rules) == 1  # adopted, not duplicated
-    adopted = rules[0]
-    assert adopted.id == ui_rule_id  # DB id preserved
-    assert adopted.is_provisioned is True
-    assert adopted.matchers == [["namespace"]]  # overwritten from manifest
-    assert adopted.priority == 0  # overwritten from manifest
-    assert adopted.updated_by == "system"
-    # Fields not in MappingRuleDtoIn reset to model defaults
-    assert adopted.disabled is False
-    assert adopted.override is True
-    assert adopted.condition is None
+    with pytest.raises(ValueError, match="explicit adoption"):
+        provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
+    assert _all_mapping_rules()[0].priority == 99
+    assert not _all_mapping_rules()[0].is_provisioned
 
 
-def test_same_name_manifests_do_not_create_duplicate(monkeypatch, db_session):
-    """Two manifests in the same directory with the same `name` field result in
-    exactly one DB row (the second manifest acts as an in-batch update). Guards
-    against duplicate creation when SQLAlchemy autoflush is disabled.
-    """
+def test_duplicate_names_reject_entire_directory(monkeypatch, db_session):
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_SAME_NAME)
-
-    provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
-
-    rules = _all_mapping_rules()
-    assert len(rules) == 1, (
-        f"expected 1 rule (duplicate names collapsed), got {len(rules)}: "
-        f"{[(r.name, r.priority) for r in rules]}"
-    )
-    # b-second.yaml sorts after a-first.yaml; final state is the second manifest's
-    assert rules[0].name == "duplicate-name-mapping"
-    assert rules[0].priority == 99
-    assert rules[0].rows[0]["namespace"] == "default"
+    with pytest.raises(ValueError, match="duplicate mapping name"):
+        provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
+    assert _all_mapping_rules() == []
 
 
 def test_non_yaml_files_in_directory_are_ignored(monkeypatch, db_session):
@@ -193,8 +150,8 @@ def test_updates_existing_provisioned_rule(monkeypatch, db_session):
     assert refreshed[0].priority == 0
 
 
-def test_deprovisions_when_manifest_file_disappears(monkeypatch, db_session):
-    """A rule provisioned from a file that's no longer in the directory is deleted."""
+def test_retains_when_manifest_file_disappears(monkeypatch, db_session):
+    """A missing file retains the last configuration until explicit deletion."""
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_TWO)
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
     assert len(_provisioned_mapping_rules()) == 2
@@ -204,12 +161,11 @@ def test_deprovisions_when_manifest_file_disappears(monkeypatch, db_session):
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
 
     remaining = _provisioned_mapping_rules()
-    assert len(remaining) == 1
-    assert remaining[0].name == "example-prometheus-mapping"
+    assert len(remaining) == 2
 
 
-def test_deprovisions_all_when_env_unset(monkeypatch, db_session):
-    """Unsetting KEEP_MAPPINGS_DIRECTORY deletes all currently-provisioned rules."""
+def test_retains_all_when_env_unset(monkeypatch, db_session):
+    """Unsetting KEEP_MAPPINGS_DIRECTORY retains all currently-provisioned rules."""
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_TWO)
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
     assert len(_provisioned_mapping_rules()) == 2
@@ -217,7 +173,7 @@ def test_deprovisions_all_when_env_unset(monkeypatch, db_session):
     monkeypatch.delenv("KEEP_MAPPINGS_DIRECTORY")
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
 
-    assert len(_provisioned_mapping_rules()) == 0
+    assert len(_provisioned_mapping_rules()) == 2
 
 
 def test_leaves_unrelated_ui_rules_untouched(monkeypatch, db_session):
@@ -253,22 +209,19 @@ def test_leaves_unrelated_ui_rules_untouched(monkeypatch, db_session):
     assert len(all_rules) == 2  # the UI rule + the provisioned one
 
 
-def test_raises_when_directory_missing(monkeypatch, db_session):
-    """Pointing KEEP_MAPPINGS_DIRECTORY at a non-existent path raises FileNotFoundError."""
-    monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_MISSING)
-    with pytest.raises(FileNotFoundError):
-        provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
-
-
-def test_invalid_manifest_does_not_break_valid_one(monkeypatch, db_session):
-    """A malformed manifest is logged and skipped; valid manifests in the same dir still provision."""
-    monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_INVALID)
-
+def test_missing_directory_preserves_configuration(monkeypatch, db_session):
+    monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_ONE)
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
+    monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_MISSING)
+    provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
+    assert len(_provisioned_mapping_rules()) == 1
 
-    rules = _provisioned_mapping_rules()
-    assert len(rules) == 1
-    assert rules[0].name == "valid-mapping"
+
+def test_invalid_manifest_rejects_entire_directory(monkeypatch, db_session):
+    monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_INVALID)
+    with pytest.raises(ValueError):
+        provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
+    assert _provisioned_mapping_rules() == []
 
 
 def test_noop_when_env_unset_and_no_provisioned_rules(monkeypatch, db_session):
@@ -282,15 +235,15 @@ def test_noop_when_env_unset_and_no_provisioned_rules(monkeypatch, db_session):
     assert len(_all_mapping_rules()) == 0
 
 
-def test_empty_directory_deprovisions_existing(monkeypatch, db_session):
-    """An empty dir is treated like 'no manifests' — existing provisioned rules deleted."""
+def test_empty_directory_retains_existing(monkeypatch, db_session):
+    """An empty mount retains existing provisioned resources."""
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_ONE)
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
     assert len(_provisioned_mapping_rules()) == 1
 
     monkeypatch.setenv("KEEP_MAPPINGS_DIRECTORY", FIXTURE_DIR_EMPTY)
     provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
-    assert len(_provisioned_mapping_rules()) == 0
+    assert len(_provisioned_mapping_rules()) == 1
 
 
 def test_provisioned_file_is_absolute_and_stable_across_dir_form_changes(

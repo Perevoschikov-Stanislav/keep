@@ -27,7 +27,6 @@ from keep.api.core.db import (
     get_mapping_rule_by_id,
     get_session_sync,
     get_topology_data_by_dynamic_matcher,
-    is_all_alerts_resolved,
 )
 from keep.api.core.elastic import ElasticClient
 from keep.api.models.action_type import ActionType
@@ -40,10 +39,9 @@ from keep.api.models.db.enrichment_event import (
     EnrichmentType,
 )
 from keep.api.models.db.extraction import ExtractionRule
-from keep.api.models.db.incident import IncidentStatus
 from keep.api.models.db.mapping import MappingRule
-from keep.api.models.db.rule import ResolveOn
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
+from keep.identitymanager.team_access import alert_history_visible_clause
 
 
 def is_valid_uuid(uuid_str):
@@ -114,7 +112,8 @@ class EnrichmentsBl:
         )
         if not alert:
             raise HTTPException(status_code=404, detail="Alert not found")
-        return self.check_if_match_and_enrich(alert, rule)
+        alert_dto = alert if isinstance(alert, AlertDto) else AlertDto(**(alert.event or {}))
+        return self.check_if_match_and_enrich(alert_dto, rule)
 
     def run_extraction_rule_by_id(self, rule_id: int, alert: Alert) -> AlertDto:
         rule = get_extraction_rule_by_id(
@@ -128,7 +127,7 @@ class EnrichmentsBl:
         return self.run_extraction_rules(alert.event, pre=False, rules=[rule])
 
     def run_extraction_rules(
-        self, event: AlertDto | dict, pre=False, rules: list[ExtractionRule] = None
+        self, event: AlertDto | dict, pre=False, rules: list[ExtractionRule] = None, *, persist=True
     ) -> AlertDto | dict:
         """
         Run the extraction rules for the event
@@ -157,7 +156,9 @@ class EnrichmentsBl:
                 "pre": pre,
             },
         )
-        rules: list[ExtractionRule] = rules or (
+        track = self._track_enrichment_event if persist else lambda *args: None
+        supplied_rules = rules is not None
+        rules: list[ExtractionRule] = rules if supplied_rules else (
             self.db_session.query(ExtractionRule)
             .filter(ExtractionRule.tenant_id == self.tenant_id)
             .filter(ExtractionRule.disabled == False)
@@ -165,6 +166,11 @@ class EnrichmentsBl:
             .order_by(ExtractionRule.priority.desc())
             .all()
         )
+        if not supplied_rules:
+            from keep.api.core.incident_configuration import configured_resources
+            rules = [rule for rule in configured_resources(self.db_session, self.tenant_id, "extraction", ExtractionRule, rules)
+                     if not rule.disabled and rule.pre == pre]
+            rules.sort(key=lambda rule: rule.priority, reverse=True)
 
         if not rules:
             self._add_enrichment_log(
@@ -177,7 +183,7 @@ class EnrichmentsBl:
                     "pre": pre,
                 },
             )
-            self._track_enrichment_event(
+            track(
                 event_id, EnrichmentStatus.SKIPPED, EnrichmentType.EXTRACTION, 0, {}
             )
             return event
@@ -204,7 +210,7 @@ class EnrichmentsBl:
                     "info",
                     {"rule_id": rule.id},
                 )
-                self._track_enrichment_event(
+                track(
                     event_id,
                     EnrichmentStatus.SKIPPED,
                     EnrichmentType.EXTRACTION,
@@ -235,7 +241,7 @@ class EnrichmentsBl:
                         "debug",
                         {"rule_id": rule.id},
                     )
-                    self._track_enrichment_event(
+                    track(
                         event_id,
                         EnrichmentStatus.SKIPPED,
                         EnrichmentType.EXTRACTION,
@@ -250,14 +256,15 @@ class EnrichmentsBl:
                 # we don't override source
                 match_dict.pop("source", None)
                 event.update(match_dict)
-                self.enrich_entity(
-                    fingerprint,
-                    match_dict,
-                    action_type=ActionType.EXTRACTION_RULE_ENRICH,
-                    action_callee="system",
-                    action_description=f"Alert enriched with extraction from rule `{rule.name}`",
-                    should_exist=False,
-                )
+                if persist:
+                    self.enrich_entity(
+                        fingerprint,
+                        match_dict,
+                        action_type=ActionType.EXTRACTION_RULE_ENRICH,
+                        action_callee="system",
+                        action_description=f"Alert enriched with extraction from rule `{rule.name}`",
+                        should_exist=False,
+                    )
                 self._add_enrichment_log(
                     "Event enriched with extraction rule",
                     "info",
@@ -267,7 +274,7 @@ class EnrichmentsBl:
                         "fingerprint": fingerprint,
                     },
                 )
-                self._track_enrichment_event(
+                track(
                     event_id,
                     EnrichmentStatus.SUCCESS,
                     EnrichmentType.EXTRACTION,
@@ -284,7 +291,7 @@ class EnrichmentsBl:
                         "fingerprint": fingerprint,
                     },
                 )
-                self._track_enrichment_event(
+                track(
                     event_id,
                     EnrichmentStatus.SKIPPED,
                     EnrichmentType.EXTRACTION,
@@ -294,7 +301,7 @@ class EnrichmentsBl:
 
         return AlertDto(**event) if is_alert_dto else event
 
-    def run_mapping_rules(self, alert: AlertDto) -> AlertDto:
+    def run_mapping_rules(self, alert: AlertDto, *, persist=True) -> AlertDto:
         """
         Run the mapping rules for the alert.
 
@@ -322,6 +329,10 @@ class EnrichmentsBl:
             .order_by(MappingRule.priority.desc())
             .all()
         )
+        from keep.api.core.incident_configuration import configured_resources
+        rules = [rule for rule in configured_resources(self.db_session, self.tenant_id, "mappings", MappingRule, rules)
+                 if not rule.disabled]
+        rules.sort(key=lambda rule: rule.priority, reverse=True)
 
         if not rules:
             # If no mapping rules are found for the tenant, log and return the original alert
@@ -333,11 +344,11 @@ class EnrichmentsBl:
             return alert
 
         for rule in rules:
-            self.check_if_match_and_enrich(alert, rule)
+            self.check_if_match_and_enrich(alert, rule, persist=persist)
 
         return alert
 
-    def check_if_match_and_enrich(self, alert: AlertDto, rule: MappingRule) -> bool:
+    def check_if_match_and_enrich(self, alert: AlertDto, rule: MappingRule, *, persist=True) -> bool:
         """
         Check if the alert matches the conditions specified in the mapping rule.
         If a match is found, enrich the alert and log the enrichment.
@@ -355,6 +366,7 @@ class EnrichmentsBl:
             {"fingerprint": alert.fingerprint, "rule_id": rule.id},
         )
 
+        track = self._track_enrichment_event if persist else lambda *args: None
         # Check if the alert has any of the attributes defined in matchers
         match = False
         for matcher in rule.matchers:
@@ -382,7 +394,7 @@ class EnrichmentsBl:
                     "alert": str(alert),
                 },
             )
-            self._track_enrichment_event(
+            track(
                 alert.id, EnrichmentStatus.SKIPPED, EnrichmentType.MAPPING, rule.id, {}
             )
             return False
@@ -484,21 +496,22 @@ class EnrichmentsBl:
             # SHAHAR: since when running this enrich_alert, the alert is not in elastic yet (its indexed after),
             #         enrich alert will fail to update the alert in elastic.
             #         hence should_exist = False
-            self.enrich_entity(
-                alert.fingerprint,
-                enrichments,
-                action_type=ActionType.MAPPING_RULE_ENRICH,
-                action_callee="system",
-                action_description=f"Alert enriched with mapping from rule `{rule.name}`",
-                should_exist=False,
-            )
+            if persist:
+                self.enrich_entity(
+                    alert.fingerprint,
+                    enrichments,
+                    action_type=ActionType.MAPPING_RULE_ENRICH,
+                    action_callee="system",
+                    action_description=f"Alert enriched with mapping from rule `{rule.name}`",
+                    should_exist=False,
+                )
 
             self._add_enrichment_log(
                 "Alert enriched",
                 "info",
                 {"fingerprint": alert.fingerprint, "rule_id": rule.id},
             )
-            self._track_enrichment_event(
+            track(
                 alert.id,
                 EnrichmentStatus.SUCCESS,
                 EnrichmentType.MAPPING,
@@ -512,7 +525,7 @@ class EnrichmentsBl:
             "info",
             {"rule_id": rule.id, "alert_fingerprint": alert.fingerprint},
         )
-        self._track_enrichment_event(
+        track(
             alert.id,
             EnrichmentStatus.FAILURE,
             EnrichmentType.MAPPING,
@@ -647,6 +660,7 @@ class EnrichmentsBl:
         action_description: str,
         dispose_on_new_alert=False,
         audit_enabled=True,
+        commit=True,
     ):
         self.logger.debug(
             "enriching multiple fingerprints",
@@ -662,6 +676,8 @@ class EnrichmentsBl:
             # for every key, add a disposable key with the value and a timestamp
             disposable_enrichments = {}
             for key, value in enrichments.items():
+                if key in {"dismissed", "dismissUntil"}:
+                    continue
                 disposable_enrichments[f"disposable_{key}"] = {
                     "value": value,
                     "timestamp": datetime.datetime.now(
@@ -678,6 +694,7 @@ class EnrichmentsBl:
             action_description,
             audit_enabled=audit_enabled,
             session=self.db_session,
+            commit=commit,
         )
 
     def disposable_enrich_entity(
@@ -731,6 +748,10 @@ class EnrichmentsBl:
         dispose_on_new_alert=False,
         force=False,
         audit_enabled=True,
+        authenticated_entity=None,
+        expected_team_id=None,
+        entity_type="alert",
+        automation_operation=None,
     ):
         """
         should_exist = False only in mapping where the alert is not yet in elastic
@@ -739,6 +760,16 @@ class EnrichmentsBl:
 
         Enrich the alert with extraction and mapping rules
         """
+        if entity_type == "incident":
+            from keep.api.models.db.incident import Incident
+            if not is_valid_uuid(fingerprint):
+                raise HTTPException(400, "Invalid incident ID")
+            incident = self.db_session.exec(select(Incident).where(Incident.tenant_id == self.tenant_id,
+                Incident.id == UUID(str(fingerprint)))).first()
+            if incident:
+                return self._enrich_incident(incident.id, enrichments, action_type, action_callee,
+                    action_description, force, audit_enabled, authenticated_entity, expected_team_id, automation_operation)
+            raise HTTPException(404, "Incident not found")
         # enrich db
         if isinstance(fingerprint, UUID):
             fingerprint = UUIDType(binary=False).process_bind_param(
@@ -757,6 +788,8 @@ class EnrichmentsBl:
             # for every key, add a disposable key with the value and a timestamp
             disposable_enrichments = {}
             for key, value in enrichments.items():
+                if key in {"dismissed", "dismissUntil"}:
+                    continue
                 disposable_enrichments[f"disposable_{key}"] = {
                     "value": value,
                     "timestamp": datetime.datetime.now(
@@ -800,22 +833,107 @@ class EnrichmentsBl:
             "alert enriched in elastic", extra={"fingerprint": fingerprint}
         )
 
+    def _enrich_incident(self, incident_id, enrichments, action_type, actor, description, force, audit_enabled,
+                         entity, expected_team_id, automation_operation=None):
+        from keep.api.core.incident_configuration import configuration_scope
+        from keep.api.core import incident_lifecycle as life
+        from keep.api.models.action_type import ActionType
+        from keep.api.models.db.incident import IncidentStatus
+        from keep.api.core.db import add_audit, get_enrichment_with_session
+        reserved = {"id", "team_id", "tenant_id", "zone", "lifecycle", "lifecycle_context", "correlation", "correlation_context", "automation", "automation_context", "notification_context"}
+        if reserved.intersection(enrichments):
+            raise HTTPException(403, "Reserved incident enrichment")
+        with configuration_scope(self.tenant_id):
+            incident, group = life.lock_incident(self.db_session, self.tenant_id, incident_id, entity)
+            if action_type == ActionType.WORKFLOW_ENRICH and (expected_team_id is None or expected_team_id != incident.team_id):
+                raise HTTPException(409, "Workflow incident owner changed or is not scoped")
+            operation = None
+            if automation_operation:
+                from keep.api.core.incident_automation import invalid_operation, snapshot_in, AutomationCancelled
+                from keep.api.models.db.incident_automation import IncidentAutomationOperation
+                operation = self.db_session.get(IncidentAutomationOperation, automation_operation["id"])
+                if (not operation or operation.tenant_id != self.tenant_id or operation.incident_id != incident.id
+                        or operation.token != automation_operation["token"] or operation.status != "running"):
+                    raise AutomationCancelled("execution_fenced")
+                reason = invalid_operation(self.db_session, incident, operation, snapshot_in(self.db_session, self.tenant_id))
+                if reason:
+                    raise AutomationCancelled(reason)
+            metadata = dict(enrichments)
+            status, assignee = metadata.pop("status", None), metadata.pop("assignee", None)
+            if status is not None and action_type != ActionType.INCIDENT_UNENRICH:
+                try:
+                    status = IncidentStatus(status)
+                except ValueError:
+                    raise HTTPException(400, "Invalid incident status") from None
+                if status not in (IncidentStatus.FIRING, IncidentStatus.ACKNOWLEDGED, IncidentStatus.RESOLVED):
+                    raise HTTPException(403, "Use the incident status endpoint")
+                life.transition(self.db_session, incident, status, at=datetime.datetime.utcnow(), actor=actor,
+                                reason="workflow enrichment" if action_type == ActionType.WORKFLOW_ENRICH else "API enrichment", group=group)
+            if "assignee" in enrichments and action_type != ActionType.INCIDENT_UNENRICH and incident.assignee != assignee:
+                incident.assignee = assignee
+                self.db_session.add(incident)
+                add_audit(self.tenant_id, str(incident_id), actor, ActionType.INCIDENT_ASSIGN,
+                          f"Incident assigned to {assignee}", self.db_session, commit=False)
+            fingerprint = UUIDType(binary=False).process_bind_param(incident_id, self.db_session.bind.dialect)
+            previous = get_enrichment_with_session(self.db_session, self.tenant_id, fingerprint)
+            if operation and operation.kind == "ticket":
+                from keep.api.core.incident_automation import incident_metadata
+                ticket_metadata = incident_metadata(self.db_session, incident)
+                key = incident.automation_context["policy"]["ticket"]["enrichment_key"]
+                if ticket_metadata and ticket_metadata.enrichments.get(key):
+                    metadata.pop(key, None)
+                    if force:
+                        metadata[key] = ticket_metadata.enrichments[key]
+            state_fields = reserved | {"status", "assignee"}
+            saved = {} if force or previous is None else {key: value for key, value in previous.enrichments.items() if key not in state_fields}
+            saved.update(metadata)
+            # The generic enrichment commit also commits the locked transition,
+            # group counters and mandatory lifecycle audit in this transaction.
+            return enrich_alert_db(self.tenant_id, fingerprint, saved, action_type, actor, description,
+                                   session=self.db_session, force=True, audit_enabled=audit_enabled)
+
+    def _enrichment_event_query(self, allowed_team_ids: frozenset[str] | None):
+        query = select(EnrichmentEvent).where(
+            EnrichmentEvent.tenant_id == self.tenant_id
+        )
+        if allowed_team_ids is not None:
+            query = query.join(
+                Alert,
+                (Alert.id == EnrichmentEvent.alert_id)
+                & (Alert.tenant_id == EnrichmentEvent.tenant_id),
+            ).where(
+                Alert.team_id.in_(allowed_team_ids),
+                alert_history_visible_clause(
+                    self.tenant_id, Alert.fingerprint, allowed_team_ids
+                ),
+            )
+        return query
+
     def get_total_enrichment_events(
-        self, rule_id: int, _type: EnrichmentType = EnrichmentType.MAPPING
+        self,
+        rule_id: int,
+        _type: EnrichmentType = EnrichmentType.MAPPING,
+        allowed_team_ids: frozenset[str] | None = None,
     ):
-        query = select(func.count(EnrichmentEvent.id)).where(
-            EnrichmentEvent.rule_id == rule_id,
-            EnrichmentEvent.tenant_id == self.tenant_id,
-            EnrichmentEvent.enrichment_type == _type.value,
+        query = (
+            self._enrichment_event_query(allowed_team_ids)
+            .with_only_columns(func.count(EnrichmentEvent.id))
+            .where(
+                EnrichmentEvent.rule_id == rule_id,
+                EnrichmentEvent.enrichment_type == _type.value,
+            )
         )
         return self.db_session.exec(query).one()
 
-    def get_enrichment_event(self, enrichment_event_id: UUID) -> EnrichmentEvent:
-        query = select(EnrichmentEvent).where(
+    def get_enrichment_event(
+        self,
+        enrichment_event_id: UUID,
+        allowed_team_ids: frozenset[str] | None = None,
+    ) -> EnrichmentEvent:
+        query = self._enrichment_event_query(allowed_team_ids).where(
             EnrichmentEvent.id == enrichment_event_id,
-            EnrichmentEvent.tenant_id == self.tenant_id,
         )
-        enrichment_event = self.db_session.exec(query).one()
+        enrichment_event = self.db_session.exec(query).first()
         if not enrichment_event:
             raise HTTPException(status_code=404, detail="Enrichment event not found")
         return enrichment_event
@@ -826,13 +944,13 @@ class EnrichmentsBl:
         limit: int,
         offset: int,
         _type: EnrichmentType = EnrichmentType.MAPPING,
+        allowed_team_ids: frozenset[str] | None = None,
     ):
         # todo: easy to make async
         query = (
-            select(EnrichmentEvent)
+            self._enrichment_event_query(allowed_team_ids)
             .where(
                 EnrichmentEvent.rule_id == rule_id,
-                EnrichmentEvent.tenant_id == self.tenant_id,
                 EnrichmentEvent.enrichment_type == _type.value,
             )
             .order_by(EnrichmentEvent.timestamp.desc())
@@ -865,13 +983,16 @@ class EnrichmentsBl:
                 "no enrichments to dispose", extra={"fingerprint": fingerprint}
             )
             return
-        # Remove all disposable enrichments
+        # Remove all disposable enrichments (excluding legacy dismiss fields)
         new_enrichments = {}
         disposed = False
+        EXCLUDED_FROM_DISPOSAL = {"dismissed", "dismissUntil"}
         for key, val in enrichments.enrichments.items():
             if key.startswith("disposable_"):
                 disposed = True
                 continue
+            elif key in EXCLUDED_FROM_DISPOSAL:
+                new_enrichments[key] = val
             elif f"disposable_{key}" not in enrichments.enrichments:
                 new_enrichments[key] = val
         # Only update the alert if there are disposable enrichments to dispose
@@ -975,10 +1096,7 @@ class EnrichmentsBl:
         )
 
         self.db_session.expire_on_commit = False
+        from keep.api.bl.incidents_bl import IncidentBl
         for incident in incidents:
-            if incident.resolve_on == ResolveOn.ALL.value and is_all_alerts_resolved(
-                incident=incident, session=self.db_session
-            ):
-                incident.status = IncidentStatus.RESOLVED.value
-                self.db_session.add(incident)
-            self.db_session.commit()
+            IncidentBl(self.tenant_id, self.db_session).resolve_incident_if_require(
+                incident, handle_workflow_event=False, member_override=True)

@@ -21,24 +21,32 @@ import {
   useIncidentAlerts,
   usePollIncidentAlerts,
 } from "utils/hooks/useIncidents";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { IncidentDto, useIncidentActions } from "@/entities/incidents/model";
 import {
   EmptyStateCard,
   getCommonPinningStylesAndClassNames,
+  showErrorToast,
 } from "@/shared/ui";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TablePagination } from "@/shared/ui";
 import clsx from "clsx";
 import { IncidentAlertsTableBodySkeleton } from "./incident-alert-table-body-skeleton";
 import { IncidentAlertsActions } from "./incident-alert-actions";
 import { AlertSidebar } from "@/features/alerts/alert-detail-sidebar";
 import { ViewAlertModal } from "@/features/alerts/view-raw-alert";
+import { AlertHistoryModal } from "@/features/alerts/alert-history";
+import { AlertDismissModal } from "@/features/alerts/dismiss-alert";
+import { AlertChangeStatusModal } from "@/features/alerts/alert-change-status";
+import { ManualRunWorkflowModal } from "@/features/workflows/manual-run-workflow";
+import { EnrichAlertSidePanel } from "@/features/alerts/enrich-alert";
+import { AlertAssociateIncidentModal } from "@/features/alerts/alert-associate-to-incident";
 import { IncidentAlertActionTray } from "./incident-alert-action-tray";
 import { BellAlertIcon } from "@heroicons/react/24/outline";
 import { AlertsTableBody } from "@/widgets/alerts-table/ui/alerts-table-body";
 import { useAlertTableCols } from "@/widgets/alerts-table/lib/alert-table-utils";
 import { useAlertTableTheme } from "@/entities/alerts/model";
+import { useConfig } from "@/utils/hooks/useConfig";
 
 interface Props {
   incident: IncidentDto;
@@ -100,14 +108,75 @@ export default function IncidentAlerts({ incident }: Props) {
 
   // State for ViewAlertModal (opened by view button)
   const [viewAlertModal, setViewAlertModal] = useState<AlertDto | null>(null);
-  
+
   // State for AlertSidebar (opened by row click)
   const [selectedAlert, setSelectedAlert] = useState<AlertDto | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  
+
   // Add state for incident selector modal (needed by AlertSidebar)
   const [isIncidentSelectorOpen, setIsIncidentSelectorOpen] = useState(false);
+
+  // States for AlertSidebar & action menu modals
+  const [dismissModalAlert, setDismissModalAlert] = useState<AlertDto[] | null>(null);
+  const [changeStatusAlert, setChangeStatusAlert] = useState<AlertDto | null>(null);
+  const [runWorkflowModalAlert, setRunWorkflowModalAlert] = useState<AlertDto | null>(null);
+  const [viewEnrichAlertModal, setEnrichAlertModal] = useState<AlertDto | null>(null);
+  const [isEnrichSidebarOpen, setIsEnrichSidebarOpen] = useState(false);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const resolvedFingerprintRef = useRef<string | null>(null);
+
+  const resetUrlAfterModal = useCallback(() => {
+    const currentParams = new URLSearchParams(searchParams?.toString() ?? "");
+    currentParams.delete("fingerprint");
+    currentParams.delete("alertPayloadFingerprint");
+    currentParams.delete("enrich");
+    currentParams.delete("providerId");
+    currentParams.delete("methodName");
+    currentParams.delete("alertFingerprint");
+    const url = currentParams.toString()
+      ? `${window.location.pathname}?${currentParams.toString()}`
+      : window.location.pathname;
+    router.replace(url, { scroll: false });
+  }, [router, searchParams]);
+
+  useEffect(() => {
+    const fingerprint = searchParams?.get("alertPayloadFingerprint");
+    const enrich = searchParams?.get("enrich");
+
+    if (fingerprint !== resolvedFingerprintRef.current) {
+      resolvedFingerprintRef.current = null;
+    }
+
+    const dataSettled = alerts?.items && !isLoading;
+
+    if (fingerprint && enrich && dataSettled) {
+      const alert = alerts?.items?.find((a) => a.fingerprint === fingerprint);
+      if (alert) {
+        resolvedFingerprintRef.current = fingerprint;
+        setEnrichAlertModal(alert);
+        setIsEnrichSidebarOpen(true);
+      } else if (!resolvedFingerprintRef.current) {
+        showErrorToast(null, "Alert fingerprint not found");
+        resetUrlAfterModal();
+      }
+    } else if (fingerprint && dataSettled) {
+      const alert = alerts?.items?.find((a) => a.fingerprint === fingerprint);
+      if (alert) {
+        resolvedFingerprintRef.current = fingerprint;
+        setViewAlertModal(alert);
+      } else if (!resolvedFingerprintRef.current) {
+        showErrorToast(null, "Alert fingerprint not found");
+        resetUrlAfterModal();
+      }
+    } else if (alerts?.items && !isLoading) {
+      resolvedFingerprintRef.current = null;
+      setViewAlertModal(null);
+      setEnrichAlertModal(null);
+    }
+  }, [searchParams, alerts?.items, isLoading, resetUrlAfterModal]);
 
   const extraColumns = [
     columnHelper.accessor("is_created_by_ai", {
@@ -155,6 +224,13 @@ export default function IncidentAlerts({ incident }: Props) {
     );
   };
 
+  const { data: config } = useConfig();
+  const incidentAlertsCols = config?.INCIDENT_ALERTS_COLUMNS || [
+    "cluster",
+    "namespace",
+    "level",
+  ];
+
   const alertTableColumns = useAlertTableCols({
     isCheckboxDisplayed: true,
     isMenuDisplayed: true,
@@ -162,6 +238,7 @@ export default function IncidentAlerts({ incident }: Props) {
     presetNoisy: false,
     MenuComponent: MenuComponent,
     extraColumns: extraColumns,
+    additionalColsToGenerate: incidentAlertsCols,
   });
 
   const table = useReactTable({
@@ -177,6 +254,7 @@ export default function IncidentAlerts({ incident }: Props) {
         "status",
         "source",
         "name",
+        ...incidentAlertsCols,
         "description",
         "is_created_by_ai",
       ],
@@ -193,8 +271,6 @@ export default function IncidentAlerts({ incident }: Props) {
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
   });
-
-  const router = useRouter();
 
   if (!isLoading && (alerts?.items ?? []).length === 0) {
     return (
@@ -215,7 +291,7 @@ export default function IncidentAlerts({ incident }: Props) {
           >
             Add Alerts Manually
           </Button>
-          <Button
+          {config?.KEEP_OSS_ONLY === false && <Button
             color="orange"
             variant="primary"
             size="md"
@@ -224,7 +300,7 @@ export default function IncidentAlerts({ incident }: Props) {
             }}
           >
             Try AI Correlation
-          </Button>
+          </Button>}
         </div>
       </EmptyStateCard>
     );
@@ -351,10 +427,13 @@ export default function IncidentAlerts({ incident }: Props) {
         <TablePagination table={table} />
       </div>
 
-      {/* ViewAlertModal - opened by the view button in the action tray */}
+      {/* ViewAlertModal - opened by the view button in the action tray or via URL parameter */}
       <ViewAlertModal
         alert={viewAlertModal}
-        handleClose={() => setViewAlertModal(null)}
+        handleClose={() => {
+          setViewAlertModal(null);
+          resetUrlAfterModal();
+        }}
         mutate={() => mutateAlerts()}
       />
 
@@ -363,11 +442,61 @@ export default function IncidentAlerts({ incident }: Props) {
         isOpen={isSidebarOpen}
         toggle={handleSidebarClose}
         alert={selectedAlert}
-        // These optional props are passed to maintain feature parity with the main alerts table
-        setRunWorkflowModalAlert={undefined}
-        setDismissModalAlert={undefined}
-        setChangeStatusAlert={undefined}
+        setRunWorkflowModalAlert={setRunWorkflowModalAlert}
+        setDismissModalAlert={setDismissModalAlert}
+        setChangeStatusAlert={setChangeStatusAlert}
         setIsIncidentSelectorOpen={setIsIncidentSelectorOpen}
+      />
+
+      <AlertHistoryModal
+        alerts={alerts?.items || []}
+        presetName="incident-alerts"
+        onClose={resetUrlAfterModal}
+      />
+
+      <AlertDismissModal
+        alert={dismissModalAlert}
+        preset="incident-alerts"
+        handleClose={() => {
+          setDismissModalAlert(null);
+          mutateAlerts();
+        }}
+      />
+
+      <AlertChangeStatusModal
+        alert={changeStatusAlert}
+        presetName="incident-alerts"
+        handleClose={() => {
+          setChangeStatusAlert(null);
+          mutateAlerts();
+        }}
+      />
+
+      <ManualRunWorkflowModal
+        isOpen={!!runWorkflowModalAlert}
+        alert={runWorkflowModalAlert}
+        onClose={() => setRunWorkflowModalAlert(null)}
+      />
+
+      <EnrichAlertSidePanel
+        alert={viewEnrichAlertModal}
+        isOpen={isEnrichSidebarOpen}
+        handleClose={() => {
+          setIsEnrichSidebarOpen(false);
+          setEnrichAlertModal(null);
+          resetUrlAfterModal();
+        }}
+        mutate={() => mutateAlerts()}
+      />
+
+      <AlertAssociateIncidentModal
+        isOpen={isIncidentSelectorOpen}
+        alerts={selectedAlert ? [selectedAlert] : []}
+        handleSuccess={() => {
+          setIsIncidentSelectorOpen(false);
+          mutateAlerts();
+        }}
+        handleClose={() => setIsIncidentSelectorOpen(false)}
       />
     </>
   );

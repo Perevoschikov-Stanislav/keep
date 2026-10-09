@@ -1,0 +1,11 @@
+--- a/templates/bridge.yaml
++++ b/templates/bridge.yaml
+@@ -37,4 +37,8 @@
+     spec:
+       automountServiceAccountToken: false
++      {{- with .Values.imagePullSecrets }}
++      imagePullSecrets:
++{{ toYaml . | indent 8 }}
++      {{- end }}
+       securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534}
+       containers:

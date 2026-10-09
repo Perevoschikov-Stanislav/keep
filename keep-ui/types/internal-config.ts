@@ -1,5 +1,6 @@
 export interface InternalConfig {
   AUTH_TYPE: string;
+  KEEP_OSS_ONLY: boolean;
   // Pusher
   PUSHER_DISABLED: boolean;
   PUSHER_HOST: string | undefined;
@@ -42,4 +43,19 @@ export interface InternalConfig {
   KEEP_WF_LIST_EXTENDED_INFO: boolean;
   // Alert sidebar fields configuration - comma-separated list of fields to display
   ALERT_SIDEBAR_FIELDS: string[];
+  // Default status filters (configurable via env without rebuild)
+  DEFAULT_INCIDENTS_STATUS_FILTER: string[];
+  DEFAULT_FEED_STATUS_FILTER: string[];
+  // Facet default ordering and open-by-default facets
+  DEFAULT_FACETS_ORDER: string[];
+  DEFAULT_OPEN_FACETS: string[];
+  // Incident UI customization (columns, card blocks, alerts tab columns)
+  INCIDENT_TABLE_COLUMNS: string[];
+  INCIDENT_OVERVIEW_FIELDS: string[];
+  INCIDENT_ALERTS_COLUMNS: string[];
+  // Enrichment protection and visibility
+  ENRICHMENTS_HIDDEN_KEYS: string[];
+  ENRICHMENTS_READ_ONLY_KEYS: string[];
+  // Preset tag sections default order
+  DEFAULT_PRESET_TAGS_ORDER: string[];
 }

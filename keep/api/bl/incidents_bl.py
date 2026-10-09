@@ -3,13 +3,12 @@ import logging
 import os
 import pathlib
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
 from pusher import Pusher
-from sqlalchemy.orm.exc import StaleDataError
 from sqlmodel import Session
 
 from keep.api.arq_pool import get_pool
@@ -39,6 +38,7 @@ from keep.api.models.incident import IncidentDto, IncidentDtoIn, IncidentSorting
 from keep.api.utils.enrichment_helpers import convert_db_alerts_to_dto_alerts
 from keep.api.utils.pagination import IncidentsPaginatedResultsDto
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
+from keep.identitymanager.team_policy import is_team_scoping_active
 from keep.workflowmanager.workflowmanager import WorkflowManager
 
 MIN_INCIDENT_ALERTS_FOR_SUMMARY_GENERATION = int(
@@ -199,7 +199,10 @@ class IncidentBl:
                 self.pusher_client.trigger(
                     f"private-{self.tenant_id}",
                     "incident-change",
-                    {"incident_id": str(incident_id) if incident_id else None},
+                    {
+                        "incident_id": str(incident_id)
+                        if incident_id and not is_team_scoping_active() else None
+                    },
                 )
                 self.logger.info(
                     "Incident change pushed to client",
@@ -303,6 +306,7 @@ class IncidentBl:
         incident_id: UUID,
         updated_incident_dto: IncidentDtoIn,
         generated_by_ai: bool,
+        authenticated_entity: AuthenticatedEntity | None = None,
     ) -> IncidentDto:
         self.logger.info(
             "Fetching incident",
@@ -312,7 +316,8 @@ class IncidentBl:
             },
         )
         incident = update_incident_from_dto_by_id(
-            self.tenant_id, incident_id, updated_incident_dto, generated_by_ai
+            self.tenant_id, incident_id, updated_incident_dto, generated_by_ai,
+            authenticated_entity=authenticated_entity,
         )
         return self.__postprocess_incident_change(incident)
 
@@ -374,6 +379,9 @@ class IncidentBl:
 
         return self.__postprocess_incident_change(incident)
 
+    def postprocess_incident_change(self, incident):
+        return self.__postprocess_incident_change(incident)
+
     def __postprocess_incident_change(self, incident):
         if not incident:
             raise HTTPException(status_code=404, detail="Incident not found")
@@ -406,6 +414,7 @@ class IncidentBl:
         is_predicted: bool = None,
         cel: str = None,
         allowed_incident_ids: Optional[List[str]] = None,
+        allowed_team_ids: Optional[frozenset[str]] = None,
     ):
         incidents, total_count = get_last_incidents_by_cel(
             tenant_id=tenant_id,
@@ -420,6 +429,7 @@ class IncidentBl:
             is_predicted=is_predicted,
             cel=cel,
             allowed_incident_ids=allowed_incident_ids,
+            allowed_team_ids=allowed_team_ids,
         )
         incidents_dto = []
         for incident in incidents:
@@ -430,123 +440,76 @@ class IncidentBl:
         )
 
     def resolve_incident_if_require(
-        self, incident: Incident, max_retries=3, handle_workflow_event: bool = True
+        self, incident: Incident, max_retries=3, handle_workflow_event: bool = True, *, member_override=False
     ) -> Incident:
+        from keep.api.core.incident_configuration import configuration_scope
+        from keep.api.core import incident_lifecycle as life
 
-        should_resolve = False
-
-        if incident.resolve_on == ResolveOn.ALL.value and is_all_alerts_resolved(
-            incident=incident, session=self.session
-        ):
-            should_resolve = True
-
-        elif (
-            incident.resolve_on == ResolveOn.FIRST.value
-            and is_first_incident_alert_resolved(incident, session=self.session)
-        ):
-            should_resolve = True
-
-        elif (
-            incident.resolve_on == ResolveOn.LAST.value
-            and is_last_incident_alert_resolved(incident, session=self.session)
-        ):
-            should_resolve = True
-
-        incident_id = incident.id
-
-        if should_resolve:
-            for attempt in range(max_retries):
-                try:
-                    incident.status = IncidentStatus.RESOLVED.value
-                    self.session.add(incident)
-                    self.session.commit()
-                    if handle_workflow_event:
-                        self.send_workflow_event(
-                            IncidentDto.from_db_incident(incident), "updated"
-                        )
-                    break
-                except StaleDataError as ex:
-                    if "expected to update" in ex.args[0]:
-                        self.logger.info(
-                            f"Phantom read detected while updating incident `{incident_id}`, retry #{attempt}"
-                        )
-                        self.session.rollback()
-                        continue
-
-        return incident
+        # IaC ingestion resolves after its clock/late-event checks in correlation.
+        # Explicit alert status enrichments still use the same transition service.
+        if life.policy_for(incident) and not member_override:
+            return incident
+        with configuration_scope(self.tenant_id):
+            incident, group = life.lock_incident(self.session, self.tenant_id, incident.id)
+            previous = incident.status
+            if previous not in IncidentStatus.get_active(True):
+                return incident
+            policy = life.policy_for(incident)
+            if policy and group:
+                members = convert_db_alerts_to_dto_alerts(life.accepted_members(self.session, incident, group),
+                                                         with_silences=False, session=self.session)
+                life.initialize(incident, group, policy, datetime.utcnow())
+                life.update_members(self.session, incident, group, policy, datetime.utcnow(), members)
+            else:
+                should_resolve = (incident.resolve_on == ResolveOn.ALL.value and is_all_alerts_resolved(incident=incident, session=self.session)
+                    or incident.resolve_on == ResolveOn.FIRST.value and is_first_incident_alert_resolved(incident, self.session)
+                    or incident.resolve_on == ResolveOn.LAST.value and is_last_incident_alert_resolved(incident, self.session))
+                if should_resolve:
+                    life.transition(self.session, incident, "resolved", at=datetime.utcnow(), reason="canonical member resolution")
+            self.session.commit()
+            if previous != incident.status and handle_workflow_event:
+                self.send_workflow_event(IncidentDto.from_db_incident(incident, session=self.session), "updated")
+            return incident
 
     def change_status(
         self,
         incident_id: UUID | str,
         new_status: IncidentStatus,
         change_by: AuthenticatedEntity,
+        *,
+        expected_revision: int | None = None,
     ) -> IncidentDto:
+        from keep.api.core.incident_configuration import configuration_scope
+        from keep.api.core import incident_lifecycle as life
 
-        self.logger.info(
-            "Fetching incident",
-            extra={
-                "incident_id": incident_id,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        with configuration_scope(self.tenant_id):
+            incident, group = life.lock_incident(self.session, self.tenant_id, incident_id, change_by)
+            if new_status in (IncidentStatus.MERGED, IncidentStatus.DELETED) and change_by.role != "admin":
+                raise HTTPException(403, "Status requires admin")
+            changed = self.transition_status(incident, group, new_status, change_by,
+                at=datetime.utcnow(), expected_revision=expected_revision)
+            self.session.commit()
+            if not changed:
+                return IncidentDto.from_db_incident(incident, session=self.session)
+            return self.__postprocess_incident_change(incident)
 
-        with_alerts = new_status in [
-            IncidentStatus.RESOLVED,
-            IncidentStatus.ACKNOWLEDGED,
-        ]
-        incident = get_incident_by_id(
-            self.tenant_id, incident_id, with_alerts=with_alerts, session=self.session
-        )
-
-        if not incident:
-            raise HTTPException(status_code=404, detail="Incident not found")
-
-        if new_status in [IncidentStatus.RESOLVED, IncidentStatus.ACKNOWLEDGED]:
+    def transition_status(self, incident, group, new_status, change_by, *, at, expected_revision=None, reason="manual"):
+        """Shared UI/integration mutation; the caller commits state, audit and receipt."""
+        from keep.api.core.incident_correlation import linked_alerts
+        from keep.api.core import incident_lifecycle as life
+        if group:
+            life.initialize(incident, group, life.policy_for(incident), at)
+        changed = life.transition(self.session, incident, new_status, at=at, actor=change_by.email,
+                                  group=group, expected_revision=expected_revision, reason=reason)
+        if changed and new_status in (IncidentStatus.RESOLVED, IncidentStatus.ACKNOWLEDGED, IncidentStatus.FIRING):
+            fingerprints = [alert.fingerprint for alert in linked_alerts(self.session, self.tenant_id, incident)]
             enrichments = {"status": new_status.value}
-            fingerprints = [alert.fingerprint for alert in incident.alerts]
             enrichments_bl = EnrichmentsBl(self.tenant_id, db=self.session)
-            (
-                action_type,
-                action_description,
-                should_run_workflow,
-                should_check_incidents_resolution,
-            ) = enrichments_bl.get_enrichment_metadata(enrichments, change_by)
-            enrichments_bl.batch_enrich(
-                fingerprints,
-                enrichments,
-                action_type,
-                change_by.email,
-                action_description,
-                dispose_on_new_alert=True,
-            )
-
-        if new_status == IncidentStatus.RESOLVED:
-            end_time = datetime.now(tz=timezone.utc)
-            incident.end_time = end_time
-
-        if incident.assignee != change_by.email:
-            incident.assignee = change_by.email
-            add_audit(
-                self.tenant_id,
-                str(incident_id),
-                change_by.email,
-                ActionType.INCIDENT_ASSIGN,
-                f"Incident self-assigned to {change_by.email}",
-                session=self.session,
-                commit=False,
-            )
-
-        add_audit(
-            self.tenant_id,
-            str(incident_id),
-            change_by.email,
-            ActionType.INCIDENT_STATUS_CHANGE,
-            f"Incident status changed from {incident.status} to {new_status.value}",
-            session=self.session,
-            commit=False,
-        )
-        incident.status = new_status.value
-        self.session.add(incident)
-        self.session.commit()
-
-        return self.__postprocess_incident_change(incident)
+            action_type, description, _, _ = enrichments_bl.get_enrichment_metadata(enrichments, change_by)
+            enrichments_bl.batch_enrich(fingerprints, enrichments, action_type, change_by.email, description,
+                                       dispose_on_new_alert=True, commit=False)
+            if group:
+                members = convert_db_alerts_to_dto_alerts(life.accepted_members(self.session, incident, group),
+                                                         with_silences=False, session=self.session)
+                life.update_members(self.session, incident, group, life.policy_for(incident), at, members)
+        return changed

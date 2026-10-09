@@ -155,7 +155,8 @@ export default function ExtractionsTable({ extractions, editCallback }: Props) {
             size="xs"
             variant="secondary"
             icon={MdModeEdit}
-            tooltip="Edit"
+            tooltip={context.row.original.iac?.managed ? "Managed through IaC" : "Edit"}
+            disabled={context.row.original.iac?.managed}
             onClick={(event) => {
               event.stopPropagation();
               editCallback(context.row.original!);
@@ -166,7 +167,8 @@ export default function ExtractionsTable({ extractions, editCallback }: Props) {
             size="xs"
             variant="secondary"
             icon={MdRemoveCircle}
-            tooltip="Delete"
+            tooltip={context.row.original.iac?.managed ? "Managed through IaC" : "Delete"}
+            disabled={context.row.original.iac?.managed}
             onClick={(event) => {
               event.stopPropagation();
               deleteExtraction(context.row.original.id!);

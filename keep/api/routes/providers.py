@@ -25,6 +25,7 @@ from keep.contextmanager.contextmanager import ContextManager
 from keep.exceptions.provider_exception import ProviderException
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import has_global_access, visible_team_ids
 from keep.providers.base.provider_exceptions import (
     GetAlertException,
     ProviderMethodException,
@@ -72,11 +73,19 @@ def get_providers(
     ),
 ):
     tenant_id = authenticated_entity.tenant_id
+    allowed_team_ids = visible_team_ids(authenticated_entity)
     logger.info("Getting installed providers", extra={"tenant_id": tenant_id})
     providers = ProvidersService.get_all_providers()
-    installed_providers = ProvidersService.get_installed_providers(tenant_id)
-    linked_providers = ProvidersService.get_linked_providers(tenant_id)
-    if PROVIDER_DISTRIBUTION_ENABLED:
+    installed_providers = ProvidersService.get_installed_providers(
+        tenant_id, include_details=authenticated_entity.role == "admin"
+    )
+    linked_providers = ProvidersService.get_linked_providers(
+        tenant_id, allowed_team_ids=allowed_team_ids
+    )
+    if allowed_team_ids is not None:
+        for provider in installed_providers:
+            provider.last_pull_time = None
+    if PROVIDER_DISTRIBUTION_ENABLED and allowed_team_ids is None:
         # generate distribution only if not in read only mode
         if READ_ONLY:
             for provider in linked_providers + installed_providers:
@@ -117,6 +126,8 @@ def get_provider_logs(
         IdentityManagerFactory.get_auth_verifier(["read:providers"])
     ),
 ):
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Provider logs require admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Getting provider logs",
@@ -147,6 +158,8 @@ def get_installed_providers(
         IdentityManagerFactory.get_auth_verifier(["read:providers"])
     ),
 ):
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="Provider export requires admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info("Getting installed providers", extra={"tenant_id": tenant_id})
     providers = ProvidersFactory.get_all_providers()
@@ -167,6 +180,8 @@ def get_alerts_configuration(
         IdentityManagerFactory.get_auth_verifier(["read:providers"])
     ),
 ) -> list:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global alert configuration requires admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info(
         "Getting provider alerts",
@@ -199,6 +214,8 @@ def get_logs(
         IdentityManagerFactory.get_auth_verifier(["read:providers"])
     ),
 ) -> list:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Provider logs require admin")
     try:
         tenant_id = authenticated_entity.tenant_id
         logger.info(
@@ -265,6 +282,8 @@ def get_alert_count(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ):
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global provider count requires admin")
     tenant_id = authenticated_entity.tenant_id
     if ever is False and (start_time is None or end_time is None):
         return HTTPException(
@@ -326,7 +345,7 @@ def add_alert(
 def test_provider(
     provider_info: dict = Body(...),
     authenticated_entity: AuthenticatedEntity = Depends(
-        IdentityManagerFactory.get_auth_verifier(["read:providers"])
+        IdentityManagerFactory.get_auth_verifier(["write:providers"])
     ),
 ) -> JSONResponse:
     # Extract parameters from the provider_info dictionary
@@ -787,6 +806,8 @@ def get_webhook_settings(
     ),
     session: Session = Depends(get_session),
 ) -> ProviderWebhookSettings:
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="Webhook credentials require admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info("Getting webhook settings", extra={"provider_type": provider_type})
     api_url = config("KEEP_API_URL")

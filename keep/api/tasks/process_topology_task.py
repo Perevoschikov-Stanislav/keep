@@ -5,6 +5,7 @@ from sqlalchemy import and_
 
 from keep.api.core.db import get_session_sync
 from keep.api.core.dependencies import get_pusher_client
+from keep.identitymanager.team_policy import is_team_scoping_active
 from keep.api.models.db.topology import (
     TopologyApplicationDtoIn,
     TopologyService,
@@ -152,7 +153,7 @@ def process_topology(
             pusher_client.trigger(
                 f"private-{tenant_id}",
                 "topology-update",
-                {"providerId": provider_id, "providerType": provider_type},
+                {} if is_team_scoping_active() else {"providerId": provider_id, "providerType": provider_type},
             )
     except Exception:
         logger.exception("Failed to push topology update to the client")

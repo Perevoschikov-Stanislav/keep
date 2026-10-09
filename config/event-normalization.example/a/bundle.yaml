@@ -1,0 +1,220 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: event-normalization-example
+tenant_id: keep
+revision: normalization-a
+keep_url: https://keep.example.net
+access:
+  path: teams.yaml
+    sha256: 5e4d460eb11a8277cfe8367beaf5e85372bbf5bf7070cbb7ba5784f69b116a44
+mappings:
+- id: component-ownership
+  artifact:
+    path: mapping.yaml
+    sha256: 757da0e881006a1515a5794cfcee1291a17bd7589a26621bead7c88c996e20aa
+extraction:
+- id: component-name
+  artifact:
+    path: extraction.yaml
+    sha256: be63b1ad2881aef507c928fcfad150562a77a2d484ec7615cde4f8c7364dc9f5
+rules:
+- id: component-incidents
+  artifact:
+    path: rule.yaml
+    sha256: 45040dc2f32bf016b73c4c9560b0ecfcd402393591aed4008f1503ec0d519bb3
+workflows:
+- id: record-example
+  artifact:
+    path: workflow.yaml
+    sha256: 969762ec468722e493cb9e4fdaef594e99aa9264a0978f3278f5cc1e8354d1a1
+normalization:
+- id: workload-owner
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 200
+  match: has(labels.kind) && labels.kind == 'workload' && ((has(labels.workload) &&
+    type(labels.workload) == string && labels.workload != '') || (has(labels.owner)
+    && type(labels.owner) == string && labels.owner != ''))
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+  presentation_ref: workload
+- id: explicit-labels
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+  presentation_ref: object
+- id: pod-fallback
+  team_ids:
+  - platform-blue
+  - database-green
+  priority: 10
+  match: has(labels.pod)
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.pod
+    missing:
+      mode: mark_unknown
+    extract:
+      pattern: ^(.*)-[a-z0-9]{8,10}-[a-z0-9]{5}$
+      group: 1
+  - name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+  presentation_ref: workload
+presentations:
+- id: object
+  title: '{{ normalized.kind }}: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Object
+    order: 10
+  - path: normalized.service
+    label: Service
+    order: 20
+  - path: normalized.namespace
+    label: Namespace
+    order: 30
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  severity_colors:
+    critical: '#d32f2f'
+- id: workload
+  title: Workload {{ normalized.workload }}
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 10
+  - path: normalized.service
+    label: Service
+    order: 20
+  - path: normalized.namespace
+    label: Namespace
+    order: 30
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  severity_colors:
+    critical: '#d32f2f'

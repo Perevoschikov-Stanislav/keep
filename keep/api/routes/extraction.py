@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from keep.api.bl.enrichments_bl import EnrichmentsBl
 from keep.api.core.db import get_alert_by_event_id, get_session
+from keep.api.core.incident_configuration import managed_metadata, require_unmanaged
 from keep.api.models.db.enrichment_event import EnrichmentEventWithLogs, EnrichmentType
 from keep.api.models.db.extraction import (
     ExtractionRule,
@@ -16,6 +17,7 @@ from keep.api.models.db.extraction import (
 from keep.api.utils.pagination import EnrichmentEventPaginatedResultsDto
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import visible_team_ids
 
 router = APIRouter()
 
@@ -35,7 +37,8 @@ def get_extraction_rules(
         .filter(ExtractionRule.tenant_id == authenticated_entity.tenant_id)
         .all()
     )
-    return [ExtractionRuleDtoOut(**rule.dict()) for rule in rules]
+    return [ExtractionRuleDtoOut(**rule.dict(), iac=managed_metadata(session, authenticated_entity.tenant_id, "extraction", rule.id))
+            for rule in rules]
 
 
 @router.post("", description="Create a new extraction rule")
@@ -74,11 +77,13 @@ def update_extraction_rule(
             ExtractionRule.id == rule_id,
             ExtractionRule.tenant_id == authenticated_entity.tenant_id,
         )
+        .with_for_update()
         .first()
     )
     if rule is None:
         raise HTTPException(status_code=404, detail="Extraction rule not found")
 
+    require_unmanaged(session, authenticated_entity.tenant_id, "extraction", rule.id)
     for key, value in rule_dto.dict(exclude_unset=True).items():
         setattr(rule, key, value)
     rule.updated_by = authenticated_entity.email
@@ -102,10 +107,12 @@ def delete_extraction_rule(
             ExtractionRule.id == rule_id,
             ExtractionRule.tenant_id == authenticated_entity.tenant_id,
         )
+        .with_for_update()
         .first()
     )
     if rule is None:
         raise HTTPException(status_code=404, detail="Extraction rule not found")
+    require_unmanaged(session, authenticated_entity.tenant_id, "extraction", rule.id)
     session.delete(rule)
     session.commit()
     return {"message": "Extraction rule deleted successfully"}
@@ -179,11 +186,16 @@ def get_enrichment_events(
         },
     )
     enrichment_bl = EnrichmentsBl(tenant_id=authenticated_entity.tenant_id)
+    allowed_team_ids = visible_team_ids(authenticated_entity)
     events = enrichment_bl.get_enrichment_events(
-        rule_id, limit, offset, EnrichmentType.EXTRACTION
+        rule_id,
+        limit,
+        offset,
+        EnrichmentType.EXTRACTION,
+        allowed_team_ids=allowed_team_ids,
     )
     total_count = enrichment_bl.get_total_enrichment_events(
-        rule_id, EnrichmentType.EXTRACTION
+        rule_id, EnrichmentType.EXTRACTION, allowed_team_ids=allowed_team_ids
     )
     logger.info(
         "Got enrichment events",
@@ -217,7 +229,9 @@ def get_enrichment_event_logs(
         },
     )
     enrichment_bl = EnrichmentsBl(tenant_id=authenticated_entity.tenant_id)
-    enrichment_event = enrichment_bl.get_enrichment_event(enrichment_event_id)
+    enrichment_event = enrichment_bl.get_enrichment_event(
+        enrichment_event_id, allowed_team_ids=visible_team_ids(authenticated_entity)
+    )
     logs = enrichment_bl.get_enrichment_event_logs(enrichment_event_id)
     if not logs:
         raise HTTPException(status_code=404, detail="Logs not found")

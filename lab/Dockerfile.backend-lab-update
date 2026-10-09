@@ -1,0 +1,9 @@
+ARG KEEP_BACKEND_IMAGE=keep-backend:lab-r2-20261006T065517Z
+FROM ${KEEP_BACKEND_IMAGE}
+USER root
+RUN apk add --no-cache re2 && apk add --no-cache --virtual .re2-build-deps g++ re2-dev py3-pybind11-dev && \
+    mkdir -p /app/.build-tmp && TMPDIR=/app/.build-tmp /venv/bin/python -m pip install \
+      --no-cache-dir --disable-pip-version-check google-re2==1.1.20251105 && \
+    apk del .re2-build-deps
+COPY --chown=keep:keep keep /venv/lib/python3.13/site-packages/keep
+USER keep

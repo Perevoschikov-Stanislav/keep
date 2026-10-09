@@ -9,7 +9,13 @@ from keep.api.core.facets_query_builder.get_facets_query_builder import (
     get_facets_query_builder,
 )
 from keep.api.core.facets_query_builder.utils import get_facet_key
-from keep.api.models.facet import CreateFacetDto, FacetDto, FacetOptionDto, FacetOptionsQueryDto
+from keep.api.models.facet import (
+    CreateFacetDto,
+    FacetDto,
+    FacetOptionDto,
+    FacetOptionsQueryDto,
+    UpdateFacetDto,
+)
 from uuid import UUID, uuid4
 
 # from pydantic import BaseModel
@@ -49,7 +55,7 @@ def map_facet_option_value(value, data_type: DataType):
         except ValueError:
             return value
     elif data_type == DataType.BOOLEAN:
-        return value in ["true", "1"]
+        return value in [True, 1, "true", "1"]
     else:
         return value
 
@@ -224,6 +230,56 @@ def create_facet(tenant_id: str, entity_type, facet: CreateFacetDto) -> FacetDto
             type=facet_db.type,
         )
     return None
+
+
+def update_facet(
+    tenant_id: str,
+    entity_type: str,
+    facet_id: str,
+    update_facet_dto: UpdateFacetDto,
+) -> FacetDto | None:
+    """
+    Updates an existing facet in the database for a given tenant.
+
+    Args:
+        tenant_id (str): The ID of the tenant.
+        entity_type (str): The entity type (alert, incident, workflow).
+        facet_id (str): The ID of the facet to update.
+        update_facet_dto (UpdateFacetDto): The fields to update.
+
+    Returns:
+        FacetDto: The updated facet details, or None if not found.
+    """
+    with Session(engine) as session:
+        result = session.exec(
+            select(Facet)
+            .where(Facet.tenant_id == tenant_id)
+            .where(Facet.id == UUID(facet_id))
+            .where(Facet.entity_type == entity_type)
+        ).first()
+        if not result:
+            return None
+        facet_db = result[0]
+        if update_facet_dto.name is not None:
+            facet_db.name = update_facet_dto.name
+        if update_facet_dto.property_path is not None:
+            facet_db.property_path = update_facet_dto.property_path
+        if update_facet_dto.description is not None:
+            facet_db.description = update_facet_dto.description
+        session.add(facet_db)
+        session.commit()
+        session.refresh(facet_db)
+        return FacetDto(
+            id=str(facet_db.id),
+            property_path=facet_db.property_path,
+            name=facet_db.name,
+            description=facet_db.description,
+            is_static=False,
+            is_lazy=True,
+            type=facet_db.type,
+            order=update_facet_dto.order,
+            is_open_by_default=update_facet_dto.is_open_by_default,
+        )
 
 
 def delete_facet(tenant_id: str, entity_type: str, facet_id: str) -> bool:

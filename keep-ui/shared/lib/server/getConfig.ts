@@ -51,8 +51,81 @@ export function getConfig(): InternalConfig {
     ? process.env.ALERT_SIDEBAR_FIELDS.split(",").map((field) => field.trim())
     : defaultAlertSidebarFields;
 
+  const defaultIncidentsStatusFilter = process.env.DEFAULT_INCIDENTS_STATUS_FILTER
+    ? process.env.DEFAULT_INCIDENTS_STATUS_FILTER.split(",").map((s) => s.trim())
+    : ["firing", "acknowledged"];
+
+  const defaultFeedStatusFilter = process.env.DEFAULT_FEED_STATUS_FILTER
+    ? process.env.DEFAULT_FEED_STATUS_FILTER.split(",").map((s) => s.trim())
+    : ["firing", "acknowledged", "suppressed", "pending"];
+
+  const defaultFacetsOrder = process.env.DEFAULT_FACETS_ORDER
+    ? process.env.DEFAULT_FACETS_ORDER.split(",").map((s) => s.trim())
+    : ["Zone", "Cluster", "Namespace"];
+
+  const defaultOpenFacets = process.env.DEFAULT_OPEN_FACETS
+    ? process.env.DEFAULT_OPEN_FACETS.split(",").map((s) => s.trim())
+    : [];
+
+  const incidentTableColumns = process.env.INCIDENT_TABLE_COLUMNS
+    ? process.env.INCIDENT_TABLE_COLUMNS.split(",").map((s) => s.trim())
+    : [
+        "severity",
+        "selected",
+        "status",
+        "name",
+        "cluster",
+        "alerts_count",
+        "alert_sources",
+        "creation_time",
+        "actions",
+      ];
+
+  const incidentOverviewFields = process.env.INCIDENT_OVERVIEW_FIELDS
+    ? process.env.INCIDENT_OVERVIEW_FIELDS.split(",").map((s) => s.trim())
+    : [
+        "summary",
+        "external_incident",
+        "grouped_by",
+        "services",
+        "environments",
+        "repositories",
+        "enrichments",
+      ];
+
+  const incidentAlertsColumns = process.env.INCIDENT_ALERTS_COLUMNS
+    ? process.env.INCIDENT_ALERTS_COLUMNS.split(",").map((s) => s.trim())
+    : ["cluster", "namespace", "level"];
+
+  const enrichmentsHiddenKeys = process.env.ENRICHMENTS_HIDDEN_KEYS
+    ? process.env.ENRICHMENTS_HIDDEN_KEYS.split(",").map((s) => s.trim())
+    : ["mm_*", "snooze_*", "mm *", "snooze *", "_*"];
+
+  const enrichmentsReadOnlyKeys = process.env.ENRICHMENTS_READ_ONLY_KEYS
+    ? process.env.ENRICHMENTS_READ_ONLY_KEYS.split(",").map((s) => s.trim())
+    : [
+        "ticket",
+        "ticket_url",
+        "jira",
+        "jira_url",
+        "mattermost",
+        "mattermost_url",
+        "runbook",
+        "runbook_url",
+        "cluster",
+        "namespace",
+        "zone",
+        "service",
+        "external_incident",
+      ];
+
+  const defaultPresetTagsOrder = process.env.DEFAULT_PRESET_TAGS_ORDER
+    ? process.env.DEFAULT_PRESET_TAGS_ORDER.split(",").map((s) => s.trim())
+    : [];
+
   return {
     AUTH_TYPE: authType,
+    KEEP_OSS_ONLY: process.env.KEEP_OSS_ONLY !== "false",
     PUSHER_DISABLED: process.env.PUSHER_DISABLED === "true",
     // could be relative (for ingress) or absolute (e.g. Pusher)
     PUSHER_HOST: process.env.PUSHER_HOST,
@@ -69,9 +142,9 @@ export function getConfig(): InternalConfig {
     // could be relative (e.g. for ingress) or absolute (e.g. for cloud run)
     API_URL_CLIENT: API_URL_CLIENT,
     POSTHOG_KEY: process.env.POSTHOG_KEY,
-    POSTHOG_DISABLED: process.env.POSTHOG_DISABLED,
+    POSTHOG_DISABLED: process.env.POSTHOG_DISABLED || "true",
     POSTHOG_HOST: process.env.POSTHOG_HOST,
-    SENTRY_DISABLED: process.env.SENTRY_DISABLED,
+    SENTRY_DISABLED: process.env.SENTRY_DISABLED || "true",
     READ_ONLY: process.env.KEEP_READ_ONLY === "true",
     OPEN_AI_API_KEY_SET:
       !!process.env.OPEN_AI_API_KEY || !!process.env.OPENAI_API_KEY,
@@ -105,5 +178,15 @@ export function getConfig(): InternalConfig {
       process.env.KEEP_WF_LIST_EXTENDED_INFO?.toLowerCase() === "true",
     // Alert sidebar fields configuration
     ALERT_SIDEBAR_FIELDS: alertSidebarFields,
+    DEFAULT_INCIDENTS_STATUS_FILTER: defaultIncidentsStatusFilter,
+    DEFAULT_FEED_STATUS_FILTER: defaultFeedStatusFilter,
+    DEFAULT_FACETS_ORDER: defaultFacetsOrder,
+    DEFAULT_OPEN_FACETS: defaultOpenFacets,
+    INCIDENT_TABLE_COLUMNS: incidentTableColumns,
+    INCIDENT_OVERVIEW_FIELDS: incidentOverviewFields,
+    INCIDENT_ALERTS_COLUMNS: incidentAlertsColumns,
+    ENRICHMENTS_HIDDEN_KEYS: enrichmentsHiddenKeys,
+    ENRICHMENTS_READ_ONLY_KEYS: enrichmentsReadOnlyKeys,
+    DEFAULT_PRESET_TAGS_ORDER: defaultPresetTagsOrder,
   };
 }

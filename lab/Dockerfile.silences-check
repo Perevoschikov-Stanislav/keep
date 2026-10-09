@@ -1,0 +1,11 @@
+ARG KEEP_BACKEND_IMAGE=keep-backend:lab-review-20261004
+FROM ${KEEP_BACKEND_IMAGE}
+USER root
+ENV TMPDIR=/silences-check/work/tmp PIP_CACHE_DIR=/silences-check/work/pip-cache
+RUN apk add --no-cache re2 && apk add --no-cache --virtual .re2-build-deps g++ re2-dev py3-pybind11-dev
+COPY lab/requirements.silences-check.txt /silences-check/requirements.txt
+RUN mkdir -p /silences-check/work/tmp /silences-check/work/pip-cache /silences-check/deps && \
+    /usr/local/bin/python -m pip install --disable-pip-version-check \
+      --target /silences-check/deps -r /silences-check/requirements.txt && apk del .re2-build-deps
+COPY --chown=1000:1000 keep /app/keep
+USER 1000:1000

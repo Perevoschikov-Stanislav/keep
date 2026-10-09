@@ -5,6 +5,7 @@ import {
   FacetOptionDto,
   FacetOptionsDict,
   FacetOptionsQuery,
+  UpdateFacetDto,
 } from "./models";
 import { useApi } from "@/shared/lib/hooks/useApi";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import { InitialFacetsData } from "./api";
 export type UseFacetActionsValue = {
   addFacet: (incident: CreateFacetDto) => Promise<FacetDto>;
   deleteFacet: (id: string, skipConfirmation?: boolean) => Promise<boolean>;
+  updateFacet: (id: string, updatedFacet: UpdateFacetDto) => Promise<FacetDto | boolean>;
 };
 
 export const useFacets = (
@@ -227,11 +229,27 @@ export const useFacetActions = (
         return false;
       }
     },
-    [api, mutateFacetsList]
+    [api, mutateFacetsList, requestUrl]
+  );
+
+  const updateFacet = useCallback(
+    async (facetId: string, updatedFacet: UpdateFacetDto) => {
+      try {
+        const result = await api.put(`${requestUrl}/${facetId}`, updatedFacet);
+        mutateFacetsList();
+        toast.success("Facet updated successfully");
+        return result as FacetDto;
+      } catch (error) {
+        showErrorToast(error, "Failed to update facet");
+        throw error;
+      }
+    },
+    [api, mutateFacetsList, requestUrl]
   );
 
   return {
     addFacet,
     deleteFacet,
+    updateFacet,
   };
 };

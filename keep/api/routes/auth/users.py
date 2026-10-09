@@ -10,9 +10,25 @@ from keep.api.core.db import update_user_password
 from keep.api.models.user import User
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.rbac import get_role_by_role_name
+from keep.identitymanager.team_access import writable_team_ids
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/me/permissions", description="Get current user's action and team permissions")
+def get_my_permissions(
+    authenticated_entity: AuthenticatedEntity = Depends(
+        IdentityManagerFactory.get_auth_verifier(["read:settings"])
+    ),
+) -> dict:
+    teams = writable_team_ids(authenticated_entity)
+    return {
+        "role": authenticated_entity.role,
+        "scopes": get_role_by_role_name(authenticated_entity.role).SCOPES,
+        "writable_teams": sorted(teams) if teams is not None else None,
+    }
 
 
 class CreateUserRequest(BaseModel):

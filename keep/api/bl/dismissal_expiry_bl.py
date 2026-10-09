@@ -17,6 +17,7 @@ from keep.api.core.dependencies import get_pusher_client
 from keep.api.models.action_type import ActionType
 from keep.api.models.alert import AlertDto
 from keep.api.models.db.alert import Alert, AlertAudit, AlertEnrichment
+from keep.identitymanager.team_policy import is_team_scoping_active
 
 
 class DismissalExpiryBl:
@@ -84,13 +85,40 @@ class DismissalExpiryBl:
                 continue
 
             try:
-                # Parse the dismissedUntil timestamp
-                dismiss_until = datetime.datetime.strptime(
-                    dismiss_until_str, "%Y-%m-%dT%H:%M:%S.%fZ"
-                ).replace(tzinfo=datetime.timezone.utc)
+                # Parse the dismissedUntil timestamp (support both with and without microseconds)
+                try:
+                    dismiss_until = datetime.datetime.strptime(
+                        dismiss_until_str, "%Y-%m-%dT%H:%M:%S.%fZ"
+                    ).replace(tzinfo=datetime.timezone.utc)
+                except ValueError:
+                    dismiss_until = datetime.datetime.strptime(
+                        dismiss_until_str, "%Y-%m-%dT%H:%M:%SZ"
+                    ).replace(tzinfo=datetime.timezone.utc)
 
                 # Check if it's expired (current time > dismissedUntil)
                 if now > dismiss_until:
+                    # Avoid competing expiry for records managed by Silence registry
+                    from keep.api.models.db.silence import Silence
+                    dedicated_rules = session.exec(
+                        select(Silence).where(
+                            Silence.tenant_id == enrichment.tenant_id,
+                            Silence.origin.in_(["legacy-api", "legacy-migration"]),
+                            Silence.correlation_id == f"legacy-dismiss:{enrichment.alert_fingerprint}",
+                        )
+                    ).all()
+                    has_silence = any(rule.selector == {
+                        "kind": "alert", "fingerprints": [enrichment.alert_fingerprint],
+                    } for rule in dedicated_rules)
+                    if has_silence:
+                        logger.info(
+                            f"Fingerprint {enrichment.alert_fingerprint} is managed by Silence registry; skipping legacy dismissal expiry",
+                            extra={
+                                "tenant_id": enrichment.tenant_id,
+                                "fingerprint": enrichment.alert_fingerprint,
+                            },
+                        )
+                        continue
+
                     logger.info(
                         f"Found expired dismissal for fingerprint {enrichment.alert_fingerprint}",
                         extra={
@@ -300,7 +328,7 @@ class DismissalExpiryBl:
                             f"private-{enrichment.tenant_id}",
                             "alert-update",
                             {
-                                "fingerprint": enrichment.alert_fingerprint,
+                                "fingerprint": enrichment.alert_fingerprint if not is_team_scoping_active() else None,
                                 "action": "dismissal_expired"
                             }
                         )

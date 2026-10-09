@@ -5,7 +5,7 @@ import { LinkWithIcon } from "components/LinkWithIcon";
 import { Mapping, Rules, Workflows, ExportIcon } from "components/icons";
 import { Session } from "next-auth";
 import { Disclosure } from "@headlessui/react";
-import { IoChevronUp } from "react-icons/io5";
+import { IoChevronUp, IoNotificationsOffOutline } from "react-icons/io5";
 import { TbTopologyRing } from "react-icons/tb";
 import { FaVolumeMute } from "react-icons/fa";
 import { IoMdGitMerge } from "react-icons/io";
@@ -51,6 +51,7 @@ const TogglableLink = ({ children, disabledConfigKey }: TogglableLinkProps) => {
 
 export const NoiseReductionLinks = ({ session }: NoiseReductionLinksProps) => {
   const isNOCRole = session?.userRole === "noc";
+  const { data: envConfig } = useConfig();
   const { topologyData } = useTopology();
   const { data: tenantConfig, isLoading } = useTenantConfiguration();
   const noiseReductionKeys = {
@@ -176,21 +177,19 @@ export const NoiseReductionLinks = ({ session }: NoiseReductionLinksProps) => {
         >
           <li>
             <LinkWithIcon
-              href="/maintenance"
-              icon={FaVolumeMute}
-              testId="maintenance"
+              href="/silences"
+              icon={IoNotificationsOffOutline}
+              testId="silences"
             >
-              <Subtitle className="text-xs">Maintenance Windows</Subtitle>
+              <Subtitle className="text-xs">Silences</Subtitle>
             </LinkWithIcon>
           </li>
         </TogglableLink>
-        <TogglableLink
-          disabledConfigKey={noiseReductionKeys.HIDE_NAVBAR_AI_PLUGINS}
-        >
-          <li>
-            <AILink></AILink>
-          </li>
-        </TogglableLink>
+        {envConfig?.KEEP_OSS_ONLY === false && (
+          <TogglableLink disabledConfigKey={noiseReductionKeys.HIDE_NAVBAR_AI_PLUGINS}>
+            <li><AILink /></li>
+          </TogglableLink>
+        )}
       </Disclosure.Panel>
     </Disclosure>
   );

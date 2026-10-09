@@ -1,6 +1,7 @@
 import logging
+import os
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from keep.api.core.db import (
     get_alerts_count,
@@ -15,6 +16,7 @@ from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+OSS_ONLY = os.getenv("KEEP_OSS_ONLY", "true").lower() == "true"
 
 
 @router.get(
@@ -27,6 +29,8 @@ def get_stats(
         IdentityManagerFactory.get_auth_verifier(["read:alert"])
     ),
 ):
+    if OSS_ONLY:
+        raise HTTPException(status_code=404, detail="Not found")
     tenant_id = authenticated_entity.tenant_id
     external_ai_settings = get_or_create_external_ai_settings(tenant_id)
 
@@ -53,5 +57,7 @@ def update_settings(
         IdentityManagerFactory.get_auth_verifier(["write:alert"])
     ),
 ):
+    if OSS_ONLY:
+        raise HTTPException(status_code=404, detail="Not found")
     tenant_id = authenticated_entity.tenant_id
     return update_extrnal_ai_settings(tenant_id, body)

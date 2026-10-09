@@ -1,0 +1,28 @@
+{
+  "KEEP_ALERTMANAGER_URL": "http://alertmanager.keep-lab.svc:9093",
+  "KEEP_ALERTMANAGER_RECONCILER_ENABLED": true,
+  "KEEP_ALERTMANAGER_TEAM_MATCHERS": {
+    "ops": [
+      [
+        {
+          "name": "zone",
+          "value": "OPS"
+        }
+      ]
+    ],
+    "it": [
+      [
+        {
+          "name": "zone",
+          "value": "IT"
+        }
+      ]
+    ]
+  },
+  "KEEP_ALERTMANAGER_RECONCILE_INTERVAL_SECONDS": 15,
+  "KEEP_ALERTMANAGER_GRACE_PERIOD_SECONDS": 180,
+  "KEEP_ALERTMANAGER_CONSECUTIVE_MISSES": 2,
+  "KEEP_ALERTMANAGER_DROP_RATIO_CIRCUIT_BREAKER": 0.5,
+  "KEEP_ALERTMANAGER_CIRCUIT_GRACE_SECONDS": 180,
+  "KEEP_ALERTMANAGER_LEASE_SECONDS": 120
+}

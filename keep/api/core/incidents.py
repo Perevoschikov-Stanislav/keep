@@ -32,17 +32,21 @@ from keep.api.models.db.facet import FacetType
 from keep.api.models.facet import FacetDto, FacetOptionDto, FacetOptionsQueryDto
 from keep.api.models.incident import IncidentSorting
 from keep.api.models.query import SortOptionsDto
+from keep.identitymanager.team_access import incident_history_visible_clause
 from keep.api.core.cel_to_sql.ast_nodes import DataType
 
 logger = logging.getLogger(__name__)
 
 incident_field_configurations = [
     FieldMappingConfiguration(
+        map_from_pattern="team_id", map_to="incident.team_id", data_type=DataType.STRING
+    ),
+    FieldMappingConfiguration(
         map_from_pattern="id", map_to=["incident.id"], data_type=DataType.UUID
     ),
     FieldMappingConfiguration(
         map_from_pattern="name",
-        map_to=["incident.user_generated_name", "incident.ai_generated_name"],
+        map_to=["incident.user_generated_name", "incident.generated_name", "incident.ai_generated_name"],
         data_type=DataType.STRING,
     ),
     FieldMappingConfiguration(
@@ -195,10 +199,11 @@ def __build_base_incident_query(
     cel=None,
     force_fetch_alerts=False,
     force_fetch_has_linked_incident=False,
+    query_properties=None,
 ):
     fetch_alerts = False
     fetch_has_linked_incident = False
-    cel_to_sql_instance = get_cel_to_sql_provider(properties_metadata)
+    cel_to_sql_instance = get_cel_to_sql_provider(query_properties or properties_metadata)
     sql_filter = None
     involved_fields = []
     is_visible_filter_present = False
@@ -315,6 +320,8 @@ def __build_last_incidents_total_count_query(
     is_predicted: bool = None,
     cel: str = None,
     allowed_incident_ids: Optional[List[str]] = None,
+    allowed_team_ids: Optional[frozenset[str]] = None,
+    query_properties=None,
 ):
     """
     Builds a SQL query to retrieve the last incidents based on various filters and sorting options.
@@ -346,12 +353,18 @@ def __build_last_incidents_total_count_query(
         tenant_id=tenant_id,
         cel=cel,
         select_args=[count_funct],
+        query_properties=query_properties,
     )["query"]
 
     query = query.filter(Incident.is_candidate == is_candidate)
 
-    if allowed_incident_ids:
+    if allowed_incident_ids is not None:
         query = query.filter(Incident.id.in_(allowed_incident_ids))
+    if allowed_team_ids is not None:
+        query = query.filter(Incident.team_id.in_(allowed_team_ids))
+        query = query.filter(
+            incident_history_visible_clause(tenant_id, Incident.id, Incident.team_id)
+        )
 
     if is_predicted is not None:
         query = query.filter(Incident.is_predicted == is_predicted)
@@ -386,6 +399,8 @@ def __build_last_incidents_query(
     is_predicted: bool = None,
     cel: str = None,
     allowed_incident_ids: Optional[List[str]] = None,
+    allowed_team_ids: Optional[frozenset[str]] = None,
+    query_properties=None,
 ):
     """
     Builds a SQL query to retrieve the last incidents based on various filters and sorting options.
@@ -412,7 +427,7 @@ def __build_last_incidents_query(
     sort_options: list[SortOptionsDto] = [
         SortOptionsDto(sort_by=sort_by, sort_dir=sort_dir)
     ]
-    cel_to_sql_instance = get_cel_to_sql_provider(properties_metadata)
+    cel_to_sql_instance = get_cel_to_sql_provider(query_properties or properties_metadata)
     sort_by_exp = cel_to_sql_instance.get_order_by_expression(
         [(sort_option.sort_by, sort_option.sort_dir) for sort_option in sort_options]
     )
@@ -425,6 +440,7 @@ def __build_last_incidents_query(
         tenant_id=tenant_id,
         cel=cel,
         select_args=[Incident, incident_enrichment],
+        query_properties=query_properties,
     )
     sql_query = built_query_result["query"]
     fetch_alerts = built_query_result["fetch_alerts"]
@@ -432,8 +448,13 @@ def __build_last_incidents_query(
 
     sql_query = sql_query.filter(Incident.is_candidate == is_candidate)
 
-    if allowed_incident_ids:
+    if allowed_incident_ids is not None:
         sql_query = sql_query.filter(Incident.id.in_(allowed_incident_ids))
+    if allowed_team_ids is not None:
+        sql_query = sql_query.filter(Incident.team_id.in_(allowed_team_ids))
+        sql_query = sql_query.filter(
+            incident_history_visible_clause(tenant_id, Incident.id, Incident.team_id)
+        )
 
     if is_predicted is not None:
         sql_query = sql_query.filter(Incident.is_predicted == is_predicted)
@@ -474,6 +495,7 @@ def get_last_incidents_by_cel(
     is_predicted: bool = None,
     cel: str = None,
     allowed_incident_ids: Optional[List[str]] = None,
+    allowed_team_ids: Optional[frozenset[str]] = None,
 ) -> Tuple[list[Incident], int]:
     """
     Retrieve the last incidents for a given tenant based on various filters and criteria.
@@ -495,6 +517,10 @@ def get_last_incidents_by_cel(
     """
 
     with Session(engine) as session:
+        from keep.api.core.silences_query import silence_properties
+
+        query_properties = silence_properties(session, tenant_id, incident_field_configurations, [cel],
+            entity="incident", allowed_team_ids=allowed_team_ids)
         try:
             total_count_query = __build_last_incidents_total_count_query(
                 tenant_id=tenant_id,
@@ -505,6 +531,8 @@ def get_last_incidents_by_cel(
                 is_predicted=is_predicted,
                 cel=cel,
                 allowed_incident_ids=allowed_incident_ids,
+                allowed_team_ids=allowed_team_ids,
+                query_properties=query_properties,
             )
             sql_query = __build_last_incidents_query(
                 tenant_id=tenant_id,
@@ -518,6 +546,8 @@ def get_last_incidents_by_cel(
                 is_predicted=is_predicted,
                 cel=cel,
                 allowed_incident_ids=allowed_incident_ids,
+                allowed_team_ids=allowed_team_ids,
+                query_properties=query_properties,
             )
         except CelToSqlException as e:
             if isinstance(e.__cause__, PropertiesMappingException):
@@ -550,6 +580,7 @@ def get_incident_facets_data(
     tenant_id: str,
     allowed_incident_ids: list[str],
     facet_options_query: FacetOptionsQueryDto,
+    allowed_team_ids: Optional[frozenset[str]] = None,
 ) -> dict[str, list[FacetOptionDto]]:
     """
     Retrieves incident facets data for a given tenant.
@@ -567,6 +598,13 @@ def get_incident_facets_data(
         )
     else:
         facets = static_facets
+
+    from keep.api.core.silences_query import silence_properties
+
+    with Session(engine) as session:
+        query_properties = silence_properties(session, tenant_id, incident_field_configurations,
+            [facet.property_path for facet in facets] + [facet_options_query.cel if facet_options_query else None],
+            entity="incident", allowed_team_ids=allowed_team_ids)
 
     def base_query_factory(
         facet_property_path: str,
@@ -592,9 +630,15 @@ def get_incident_facets_data(
             select_statement,
             force_fetch_alerts=force_fetch_alerts,
             force_fetch_has_linked_incident=force_fetch_has_linked_incident,
+            query_properties=query_properties,
         )["query"]
-        if allowed_incident_ids:
+        if allowed_incident_ids is not None:
             base_query = base_query.filter(Incident.id.in_(allowed_incident_ids))
+        if allowed_team_ids is not None:
+            base_query = base_query.filter(Incident.team_id.in_(allowed_team_ids))
+            base_query = base_query.filter(
+                incident_history_visible_clause(tenant_id, Incident.id, Incident.team_id)
+            )
         return base_query
 
     return get_facet_options(
@@ -602,7 +646,7 @@ def get_incident_facets_data(
         entity_id_column=Incident.id,
         facets=facets,
         facet_options_query=facet_options_query,
-        properties_metadata=properties_metadata,
+        properties_metadata=query_properties,
     )
 
 

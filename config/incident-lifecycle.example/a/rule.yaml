@@ -1,0 +1,11 @@
+ruleName: Configured component incidents
+sqlQuery:
+  sql: (severity >= :minimum)
+  params:
+    minimum: 2
+celQuery: severity >= 2
+timeframeInSeconds: 120
+timeUnit: seconds
+groupingCriteria:
+- component
+threshold: 1

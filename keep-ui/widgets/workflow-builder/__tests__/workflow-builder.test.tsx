@@ -181,7 +181,8 @@ jest.mock("@/entities/workflows", () => ({
   useWorkflowStore: () => mockedUseWorkflowStore(),
 }));
 
-const mockConfig: InternalConfig = {
+const mockConfig: Partial<InternalConfig> = {
+  KEEP_OSS_ONLY: true,
   API_URL: "http://localhost:8000",
   API_URL_CLIENT: "http://localhost:8000",
   AUTH_TYPE: "test",
@@ -306,6 +307,7 @@ describe("WorkflowBuilder", () => {
     // Verify step names are present
     expect(screen.getByText("First Step")).toBeInTheDocument();
     expect(screen.getByText("Second Step")).toBeInTheDocument();
+    expect(screen.queryByText("WorkflowBuilderChat")).not.toBeInTheDocument();
   });
 
   it("should show loading state", () => {

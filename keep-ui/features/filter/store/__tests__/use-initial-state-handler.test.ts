@@ -59,4 +59,39 @@ describe("useInitialStateHandler", () => {
       })
     );
   });
+
+  it("should restore saved state from localStorage instead of defaults", () => {
+    const savedStore = createFacetsPanelStore();
+    savedStore.setState({
+      facets: [
+        {
+          id: "statusFacet",
+          name: "Status",
+          property_path: "status",
+        } as FacetDto,
+      ],
+      facetOptions: null,
+      facetsState: {},
+      isInitialStateHandled: false,
+    });
+    const facetsConfig: FacetsConfig = {
+      Status: {
+        checkedByDefaultOptionValues: ["firing", "acknowledged"],
+      } as FacetConfig,
+    };
+
+    window.localStorage.setItem(
+      "keep-filters-incidents",
+      JSON.stringify({ statusFacet: { "'resolved'": true } })
+    );
+
+    renderHook(() => useFacetsConfig(facetsConfig, savedStore));
+    renderHook(() => useInitialStateHandler(savedStore, "incidents"));
+
+    expect(savedStore.getState().facetsState).toEqual({
+      statusFacet: {
+        "'resolved'": true,
+      },
+    });
+  });
 });

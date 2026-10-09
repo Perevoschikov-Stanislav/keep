@@ -1,0 +1,12 @@
+workflow:
+  id: record-example
+  name: Record example without external delivery
+  triggers:
+  - type: manual
+  actions:
+  - name: record
+    notification: false
+    provider:
+      type: mock
+      with:
+        value: dry-run evidence b

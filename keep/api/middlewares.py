@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from uuid import uuid4
 from importlib import metadata
 
 import jwt
@@ -53,9 +54,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         # for debugging purposes, log the payload
         if os.environ.get("LOG_AUTH_PAYLOAD", "false") == "true":
-            logger.info(f"Request headers: {request.headers}")
+            secret_headers = {"authorization", "cookie", "x-api-key", "x-keep-actor-token"}
+            headers = {name: "[redacted]" if name.lower() in secret_headers else value
+                       for name, value in request.headers.items()}
+            logger.info("Request headers: %s", headers)
 
         start_time = time.time()
+        if not getattr(request.state, "trace_id", None):
+            request.state.trace_id = str(uuid4())
         request.state.tenant_id = identity
         response = await call_next(request)
 

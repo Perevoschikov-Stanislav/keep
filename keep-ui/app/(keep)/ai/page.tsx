@@ -1,6 +1,8 @@
 import { AIPlugins } from "./ai-plugins";
+import { notFound } from "next/navigation";
 
 export default function Page() {
+  if (process.env.KEEP_OSS_ONLY !== "false") notFound();
   return <AIPlugins />;
 }
 

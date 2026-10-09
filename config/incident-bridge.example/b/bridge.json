@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "tenant_id": "keep",
+  "transport_ref": "primary",
+  "keep_api_url": "http://keep-backend:8080",
+  "keep_ui_url": "https://keep.example.net",
+  "mattermost_url": "https://chat.example.net",
+  "transport_token_ref": "env:BRIDGE_TRANSPORT_TOKEN",
+  "service_token_ref": "env:KEEP_BRIDGE_SERVICE_TOKEN",
+  "mattermost_token_ref": "env:MM_BOT_TOKEN",
+  "state_db": "/state/transport.db",
+  "timeout_seconds": 3,
+  "reconcile_interval_seconds": 15,
+  "recovery_page_size": 100,
+  "recovery_max_pages": 10,
+  "max_body_bytes": 524288,
+  "destinations": {
+    "frontend-west-primary": {
+      "team_id": "frontend-west",
+      "channel_id": "ffffffffffffffffffffffffff",
+      "silence_service_posts": true
+    },
+    "network-east-primary": {
+      "team_id": "network-east",
+      "channel_id": "nnnnnnnnnnnnnnnnnnnnnnnnnn",
+      "silence_service_posts": true
+    }
+  }
+}

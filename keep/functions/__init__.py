@@ -133,7 +133,7 @@ def split(string, delimeter) -> list:
 
 
 def index(iterable, index) -> any:
-    if isinstance(index, str) and index.isdigit():  # Если индекс — строка с числом
+    if isinstance(index, str) and index.isdigit():  # If index is a digit string
         index = int(index)
     return iterable[index]
 

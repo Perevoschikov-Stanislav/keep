@@ -58,7 +58,7 @@ export const GroupedRow = ({
       } else {
         groupValue = incidentsDto
           ?.map((incident) => {
-            return incident.user_generated_name || incident.ai_generated_name;
+            return incident.user_generated_name || incident.generated_name || incident.ai_generated_name;
           })
           .join(", ");
       }

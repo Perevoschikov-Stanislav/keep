@@ -61,7 +61,7 @@ export default function PermissionsTab({ isDisabled = false }: Props) {
         })) || []),
         ...(incidents?.items.map((incident) => ({
           id: incident.id,
-          name: incident.user_generated_name || incident.ai_generated_name,
+          name: incident.user_generated_name || incident.generated_name || incident.ai_generated_name,
           type: "incident",
           assignments:
             permissions

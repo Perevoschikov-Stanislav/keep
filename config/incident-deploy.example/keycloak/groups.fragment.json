@@ -1,0 +1,14 @@
+{
+  "groups": [
+    {"name": "keep-admin"},
+    {"name": "keep-ops-l1"},
+    {"name": "keep-ops-l2"},
+    {"name": "keep-it"},
+    {"name": "keep-scanner"},
+    {"name": "keep-viewer"},
+    {
+      "name": "keep-teams",
+      "subGroups": [{"name": "ops"}, {"name": "it"}]
+    }
+  ]
+}

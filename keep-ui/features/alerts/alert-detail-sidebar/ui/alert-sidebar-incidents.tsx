@@ -19,7 +19,7 @@ const CollapsibleIncidentsList = ({ incidents }: CollapsibleIncidentsListProps) 
     return (
         <div className="flex flex-col">
             {visibleIncidents.map((incident) => {
-                const title = incident.user_generated_name || incident.ai_generated_name;
+                const title = incident.user_generated_name || incident.generated_name || incident.ai_generated_name;
                 return (
                     <Link
                         href={`/incidents/${incident.id}`}

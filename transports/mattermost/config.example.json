@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tenant_id": "keep",
+  "transport_ref": "chat-bridge",
+  "keep_api_url": "http://keep-backend:8080",
+  "keep_ui_url": "https://keep.example.org",
+  "mattermost_url": "https://chat.example.org",
+  "transport_token_ref": "env:BRIDGE_TRANSPORT_TOKEN",
+  "service_token_ref": "env:KEEP_BRIDGE_SERVICE_TOKEN",
+  "mattermost_token_ref": "env:MM_BOT_TOKEN",
+  "state_db": "/state/transport.db",
+  "timeout_seconds": 10,
+  "reconcile_interval_seconds": 10,
+  "recovery_page_size": 100,
+  "recovery_max_pages": 10,
+  "max_body_bytes": 524288,
+  "destinations": {
+    "engineering-chat": {
+      "team_id": "engineering",
+      "channel_id": "replacewith26charinstanceid",
+      "silence_service_posts": false
+    }
+  }
+}

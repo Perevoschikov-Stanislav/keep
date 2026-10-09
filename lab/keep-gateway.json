@@ -1,0 +1,11 @@
+{
+  "apiVersion": "v1",
+  "kind": "ConfigMap",
+  "metadata": {
+    "name": "keep-gateway",
+    "namespace": "keep-lab"
+  },
+  "data": {
+    "nginx.conf": "events {}\nhttp {\n  server {\n    listen 8000;\n    location /oauth2/ {\n      proxy_pass http://oauth2-proxy.keep-lab.svc.cluster.local:4180;\n      proxy_set_header Host $http_host;\n      proxy_set_header X-Real-IP $remote_addr;\n      proxy_set_header X-Scheme $scheme;\n      proxy_set_header X-Auth-Request-Redirect $request_uri;\n    }\n    location = /oauth2/sign_out {\n      proxy_pass http://oauth2-proxy.keep-lab.svc.cluster.local:4180;\n      proxy_set_header Host $http_host;\n      proxy_set_header X-Real-IP $remote_addr;\n      proxy_set_header X-Scheme $scheme;\n      proxy_set_header X-Auth-Request-Redirect \"/oauth2/sign_in?rd=/\";\n    }\n    location = /oauth2/auth {\n      proxy_pass http://oauth2-proxy.keep-lab.svc.cluster.local:4180;\n      proxy_set_header Host $http_host;\n      proxy_set_header X-Real-IP $remote_addr;\n      proxy_set_header Content-Length \"\";\n      proxy_pass_request_body off;\n    }\n    location /v2/ {\n      auth_request /oauth2/auth;\n      error_page 401 = /oauth2/start;\n      auth_request_set $auth_email $upstream_http_x_auth_request_email;\n      auth_request_set $auth_groups $upstream_http_x_auth_request_groups;\n      proxy_set_header X-Auth-Request-Email $auth_email;\n      proxy_set_header X-Auth-Request-Groups $auth_groups;\n      # Browser requests are authenticated by oauth2-proxy above.\n      proxy_set_header Authorization \"\";\n      rewrite ^/v2/(.*)$ /$1 break;\n      proxy_pass http://keep-backend.keep-lab.svc.cluster.local:8080;\n    }\n    location / {\n      auth_request /oauth2/auth;\n      error_page 401 = /oauth2/start;\n      auth_request_set $auth_email $upstream_http_x_auth_request_email;\n      auth_request_set $auth_groups $upstream_http_x_auth_request_groups;\n      proxy_set_header X-Auth-Request-Email $auth_email;\n      proxy_set_header X-Auth-Request-Groups $auth_groups;\n      proxy_set_header Host $http_host;\n      proxy_pass http://keep-frontend.keep-lab.svc.cluster.local:3000;\n    }\n  }\n}\n"
+  }
+}

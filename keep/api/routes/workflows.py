@@ -21,6 +21,7 @@ from sqlmodel import Session
 
 from keep.api.core.cel_to_sql.sql_providers.base import CelToSqlException
 from keep.api.core.config import config
+from keep.api.core.incident_configuration import require_unmanaged
 from keep.api.core.db import (
     get_alert_by_event_id,
     get_installed_providers,
@@ -60,6 +61,14 @@ from keep.contextmanager.contextmanager import ContextManager
 from keep.functions import cyaml
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import (
+    has_global_access,
+    accessible_alert_fingerprints,
+    require_alert_access,
+    require_incident_access,
+    visible_team_ids,
+    writable_team_ids,
+)
 from keep.parser.parser import Parser
 from keep.providers.providers_factory import ProviderConfigurationException
 from keep.secretmanager.secretmanagerfactory import SecretManagerFactory
@@ -394,6 +403,7 @@ def run_workflow(
         )
 
     workflowmanager = WorkflowManager.get_instance()
+    inputs = {}
 
     try:
         # Handle replay from query parameters
@@ -401,7 +411,11 @@ def run_workflow(
             if event_type == "alert":
                 # Fetch alert from your alert store
                 alert_db = get_alert_by_event_id(tenant_id, event_id)
+                if alert_db is None:
+                    raise HTTPException(status_code=404, detail="Alert not found")
+                require_alert_access(authenticated_entity, alert_db.fingerprint, for_write=True)
                 event = convert_db_alerts_to_dto_alerts([alert_db])[0]
+                event.fingerprint = alert_db.fingerprint
             elif event_type == "incident":
                 # SHAHAR: TODO
                 raise NotImplementedError("Incident replay is not supported yet")
@@ -413,6 +427,12 @@ def run_workflow(
         else:
             # Handle regular run from body
             event, inputs = get_event_from_body(body, tenant_id)
+
+            if writable_team_ids(authenticated_entity) is not None:
+                if isinstance(event, AlertDto):
+                    require_alert_access(authenticated_entity, event.fingerprint, for_write=True)
+                elif isinstance(event, IncidentDto):
+                    require_incident_access(authenticated_entity, event.id, for_write=True)
 
         workflow_execution_id = workflowmanager.scheduler.handle_manual_event_workflow(
             workflow_id,
@@ -664,6 +684,10 @@ def get_workflow_executions_by_alert_fingerprint(
             )
         )
 
+    accessible = accessible_alert_fingerprints(
+        authenticated_entity,
+        {execution.alert_fingerprint for execution in latest_workflow_to_alert_executions},
+    )
     return [
         WorkflowToAlertExecutionDTO(
             workflow_id=workflow_execution.workflow_execution.workflow_id,
@@ -674,6 +698,7 @@ def get_workflow_executions_by_alert_fingerprint(
             event_id=workflow_execution.event_id,
         )
         for workflow_execution in latest_workflow_to_alert_executions
+        if workflow_execution.alert_fingerprint in accessible
     ]
 
 
@@ -833,6 +858,7 @@ async def update_workflow_by_id(
         )
         raise HTTPException(404, "Workflow not found")
 
+    require_unmanaged(session, tenant_id, "workflows", workflow_id)
     if workflow_from_db.provisioned:
         raise HTTPException(403, detail="Cannot update a provisioned workflow")
 
@@ -987,6 +1013,8 @@ def get_workflow_runs_by_id(
         IdentityManagerFactory.get_auth_verifier(["read:workflows"])
     ),
 ) -> WorkflowExecutionsPaginatedResultsDto:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global workflow runs require admin")
     tenant_id = authenticated_entity.tenant_id
     workflow = get_workflow_by_id_db(tenant_id=tenant_id, workflow_id=workflow_id)
     if not workflow:
@@ -1097,6 +1125,8 @@ def get_workflow_execution_status(
         IdentityManagerFactory.get_auth_verifier(["read:workflows"])
     ),
 ) -> WorkflowExecutionDTO:
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Workflow logs require admin")
     tenant_id = authenticated_entity.tenant_id
     workflowstore = WorkflowStore()
     workflow_execution, logs = workflowstore.get_workflow_execution_with_logs(
@@ -1173,7 +1203,8 @@ def toggle_workflow_state(
     tenant_id = authenticated_entity.tenant_id
     logger.info(f"Toggling workflow {workflow_id}", extra={"tenant_id": tenant_id})
 
-    workflow = get_workflow_by_id_db(tenant_id=tenant_id, workflow_id=workflow_id)
+    from keep.api.bl.incident_provisioning import target_row
+    workflow = target_row(session, tenant_id, "workflows", workflow_id, lock=True)
     if not workflow:
         logger.warning(
             f"Tenant tried to toggle workflow {workflow_id} that does not exist",
@@ -1181,6 +1212,7 @@ def toggle_workflow_state(
         )
         raise HTTPException(404, "Workflow not found")
 
+    require_unmanaged(session, tenant_id, "workflows", workflow_id)
     if workflow.provisioned:
         raise HTTPException(403, detail="Cannot modify a provisioned workflow")
 
@@ -1261,6 +1293,8 @@ def read_workflow_secret(
     """
     Read a secret value for a workflow. Optionally parse as JSON if is_json is True.
     """
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="Workflow secrets require admin")
     tenant_id = authenticated_entity.tenant_id
 
     workflow = get_workflow_by_id_db(tenant_id=tenant_id, workflow_id=workflow_id)

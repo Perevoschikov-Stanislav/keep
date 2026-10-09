@@ -1,0 +1,16 @@
+{
+  "spec": {
+    "strategy": {"type": "Recreate", "rollingUpdate": null},
+    "template": {
+      "spec": {
+        "containers": [{
+          "name": "mattermost",
+          "image": "mattermost/mattermost-preview@sha256:90319a856c49f0aef1000ab473ad76be3a8a97bef196424764638ee132eb61bc",
+          "imagePullPolicy": "IfNotPresent",
+          "volumeMounts": [{"name": "mattermost-db", "mountPath": "/var/lib/postgresql/data"}]
+        }],
+        "volumes": [{"name": "mattermost-db", "persistentVolumeClaim": {"claimName": "mattermost-preview-db"}}]
+      }
+    }
+  }
+}

@@ -46,3 +46,4 @@ class ExtractionRuleDtoOut(ExtractionRuleDtoBase, extra="ignore"):
     created_at: datetime
     updated_by: Optional[str]
     updated_at: Optional[datetime]
+    iac: Optional[dict] = None

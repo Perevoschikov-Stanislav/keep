@@ -82,6 +82,8 @@ class MappingRuleDtoOut(MappRuleDtoBase, extra="ignore"):
     updated_by: Optional[str] | None
     last_updated_at: Optional[datetime] | None
     rows: Optional[list[dict]] = None
+    is_provisioned: bool = False
+    iac: Optional[dict] = None
 
 
 class MappingRuleDtoIn(MappRuleDtoBase):

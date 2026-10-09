@@ -1,0 +1,31 @@
+version: 1
+visibility: team
+roles:
+  admin:
+  - /roles/admin
+  responder:
+  - /roles/responder
+  viewer:
+  - /roles/viewer
+teams:
+- id: cedar
+  groups:
+  - /teams/cedar
+  zones:
+  - zone-cedar
+  visible_to:
+  - cedar
+- id: quartz
+  groups:
+  - /teams/quartz
+  zones:
+  - zone-quartz
+  visible_to:
+  - quartz
+incident_views:
+- id: cedar
+  name: Cedar
+  cel: team_id == 'cedar'
+- id: quartz
+  name: Quartz
+  cel: team_id == 'quartz'

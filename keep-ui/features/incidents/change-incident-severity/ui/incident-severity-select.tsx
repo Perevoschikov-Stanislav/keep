@@ -31,9 +31,10 @@ type Props = {
   value: Severity;
   onChange?: (status: Severity) => void;
   className?: string;
+  disabled?: boolean;
 };
 
-export function IncidentSeveritySelect({ value, onChange, className }: Props) {
+export function IncidentSeveritySelect({ value, onChange, className, disabled }: Props) {
   // Use a portal to render the menu outside the table container with overflow: hidden
   const menuPortalTarget = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -63,8 +64,8 @@ export function IncidentSeveritySelect({ value, onChange, className }: Props) {
   );
 
   const handleChange = useCallback(
-    (option: any) => onChange?.(option?.value || null),
-    [onChange]
+    (option: any) => { if (!disabled) onChange?.(option?.value || null); },
+    [onChange, disabled]
   );
 
   const selectedOption = useMemo(
@@ -74,6 +75,9 @@ export function IncidentSeveritySelect({ value, onChange, className }: Props) {
 
   return (
     <Select
+      aria-label="Incident severity"
+      isDisabled={disabled}
+      menuIsOpen={disabled ? false : undefined}
       className={className}
       isSearchable={false}
       options={severityOptions}

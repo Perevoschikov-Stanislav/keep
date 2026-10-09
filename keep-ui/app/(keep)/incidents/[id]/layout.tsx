@@ -16,7 +16,8 @@ export default async function Layout(
   } = props;
 
   const AIEnabled =
-    !!process.env.OPEN_AI_API_KEY || !!process.env.OPENAI_API_KEY;
+    process.env.KEEP_OSS_ONLY === "false" &&
+    (!!process.env.OPEN_AI_API_KEY || !!process.env.OPENAI_API_KEY);
   try {
     const incident = await getIncidentWithErrorHandling(serverParams.id);
     return (

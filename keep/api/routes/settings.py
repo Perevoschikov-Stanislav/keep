@@ -55,6 +55,8 @@ def webhook_settings(
     ),
     session: Session = Depends(get_session),
 ) -> WebhookSettings:
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="Webhook credentials require admin")
     tenant_id = authenticated_entity.tenant_id
     logger.info("Getting webhook settings")
     api_url = config("KEEP_API_URL")
@@ -107,6 +109,8 @@ async def get_smtp_settings(
     ),
     session: Session = Depends(get_session),
 ):
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="SMTP credentials require admin")
     logger.info("Getting SMTP settings")
     tenant_id = authenticated_entity.tenant_id
     context_manager = ContextManager(tenant_id=tenant_id)
@@ -301,6 +305,8 @@ def get_keys(
     ),
     session: Session = Depends(get_session),
 ):
+    if authenticated_entity.role != "admin":
+        raise HTTPException(status_code=403, detail="API key secrets require admin")
     tenant_id = authenticated_entity.tenant_id
     role = get_role_by_role_name(authenticated_entity.role)
 

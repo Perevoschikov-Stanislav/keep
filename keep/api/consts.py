@@ -59,6 +59,10 @@ FINGERPRINT_PAYLOAD_LIMIT = 100
 
 
 def fingerprints_for_poll_payload(fingerprints: list[str]) -> list[str]:
+    from keep.identitymanager.team_policy import is_team_scoping_active
+
+    if is_team_scoping_active():
+        return []
     if len(fingerprints) <= FINGERPRINT_PAYLOAD_LIMIT:
         return fingerprints
     return []

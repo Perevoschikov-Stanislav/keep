@@ -1,0 +1,24 @@
+name: zone-namespaces
+description: Zone overrides by namespace
+priority: 95
+type: csv
+matchers:
+- - cluster
+  - namespace
+rows:
+- cluster: ^infra-cluster$
+  namespace: ^(app-prod|prod)$
+  zone: OPS
+  env_kind: prod
+- cluster: ^infra-cluster$
+  namespace: ^(app-)?(dev|test|rc|auto|load|ops|sandbox)[0-9]*$
+  zone: IT
+  env_kind: stand
+- cluster: ^infra-cluster$
+  namespace: .*
+  zone: IT
+  env_kind: internal
+- cluster: ^production-cluster$
+  namespace: ^(monitoring|ticketing|ci-system|chat|registry|internal-tools)$
+  zone: IT
+  env_kind: internal

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui";
 import { useConfig } from "@/utils/hooks/useConfig";
 import {
+  CopilotKit,
   useCopilotAction,
   useCopilotContext,
   useCopilotReadable,
@@ -38,6 +39,57 @@ type CreateOrUpdatePresetFormProps = {
   onCancel?: () => void;
 };
 
+function PresetNameAIButton({
+  cel,
+  onGeneratedName,
+}: {
+  cel: string;
+  onGeneratedName: (name: string) => void;
+}) {
+  const [generatingName, setGeneratingName] = useState(false);
+  const context = useCopilotContext();
+
+  useCopilotReadable({
+    description: "The CEL query for the alert preset",
+    value: cel,
+  });
+
+  useCopilotAction({
+    name: "setGeneratedName",
+    description: "Set the generated preset name",
+    parameters: [
+      { name: "name", type: "string", description: "The generated name" },
+    ],
+    handler: async ({ name }) => {
+      onGeneratedName(name);
+    },
+  });
+
+  const generatePresetName = useCallback(async () => {
+    setGeneratingName(true);
+    const task = new CopilotTask({
+      instructions:
+        "Generate a short, descriptive name for an alert preset based on the provided CEL query. The name should be concise but meaningful, reflecting the key conditions in the query.",
+    });
+    await task.run(context);
+    setGeneratingName(false);
+  }, [context]);
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      onClick={generatePresetName}
+      disabled={!cel || generatingName}
+      loading={generatingName}
+      icon={TbSparkles}
+      size="xs"
+    >
+      AI
+    </Button>
+  );
+}
+
 export function CreateOrUpdatePresetForm({
   presetId,
   presetData,
@@ -54,7 +106,6 @@ export function CreateOrUpdatePresetForm({
 
   const [groupColumn, setGroupColumn] = useState(presetData.groupColumn ?? "");
 
-  const [generatingName, setGeneratingName] = useState(false);
   const [selectedTags, setSelectedTags] = useState<TagOption[]>(
     presetData.tags ?? []
   );
@@ -91,34 +142,7 @@ export function CreateOrUpdatePresetForm({
   };
 
   const { data: configData } = useConfig();
-  const isAIEnabled = configData?.OPEN_AI_API_KEY_SET;
-  const context = useCopilotContext();
-
-  useCopilotReadable({
-    description: "The CEL query for the alert preset",
-    value: presetData.CEL,
-  });
-
-  useCopilotAction({
-    name: "setGeneratedName",
-    description: "Set the generated preset name",
-    parameters: [
-      { name: "name", type: "string", description: "The generated name" },
-    ],
-    handler: async ({ name }) => {
-      setPresetName(name);
-    },
-  });
-
-  const generatePresetName = useCallback(async () => {
-    setGeneratingName(true);
-    const task = new CopilotTask({
-      instructions:
-        "Generate a short, descriptive name for an alert preset based on the provided CEL query. The name should be concise but meaningful, reflecting the key conditions in the query.",
-    });
-    await task.run(context);
-    setGeneratingName(false);
-  }, [context]);
+  const isAIEnabled = configData?.KEEP_OSS_ONLY === false && configData?.OPEN_AI_API_KEY_SET;
 
   const { createPreset, updatePreset } = usePresetActions();
   const addOrUpdatePreset = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -181,16 +205,9 @@ export function CreateOrUpdatePresetForm({
               className="w-full"
             />
             {isAIEnabled && (
-              <Button
-                variant="secondary"
-                onClick={generatePresetName}
-                disabled={!presetData.CEL || generatingName}
-                loading={generatingName}
-                icon={TbSparkles}
-                size="xs"
-              >
-                AI
-              </Button>
+              <CopilotKit runtimeUrl="/api/copilotkit">
+                <PresetNameAIButton cel={presetData.CEL} onGeneratedName={setPresetName} />
+              </CopilotKit>
             )}
           </div>
         </div>

@@ -6,25 +6,33 @@ import { usePathname } from "next/navigation";
 import Skeleton from "react-loading-skeleton";
 import { FacetValue } from "./facet-value";
 import { FacetDto, FacetOptionDto } from "./models";
-import { TrashIcon } from "@heroicons/react/24/outline";
+import { TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { Bars2Icon } from "@heroicons/react/20/solid";
 import { useExistingFacetsPanelStore } from "./store";
 import { isLazyFacet, stringToValue, valueToString } from "./store/utils";
 
 export interface FacetProps {
   facet: FacetDto;
+  panelId?: string;
   isOpenByDefault?: boolean;
   options?: FacetOptionDto[];
   showIcon?: boolean;
+  dragHandleProps?: Record<string, any>;
   onLoadOptions?: () => void;
   onDelete?: () => void;
+  onEdit?: () => void;
 }
 
 export const Facet: React.FC<FacetProps> = ({
   facet,
+  panelId,
+  isOpenByDefault,
   options,
   showIcon = true,
+  dragHandleProps,
   onLoadOptions,
   onDelete,
+  onEdit,
 }) => {
   const pathname = usePathname();
   // Get preset name from URL
@@ -36,9 +44,29 @@ export const Facet: React.FC<FacetProps> = ({
   // options for every lazy facet is what froze the alerts page when many (200+)
   // facets existed (see issue #6577).
   const isLazy = isLazyFacet(facet);
-  const [isOpen, setIsOpen] = useState<boolean>(!isLazy);
+
+  // Store open/close state in localStorage with a unique key per panel and facet
+  const storageKey = `facet-open-${panelId || "default"}-${facet.id}`;
+  const [savedIsOpen, setSavedIsOpen] = useLocalStorage<boolean | null>(
+    storageKey,
+    null
+  );
+
+  const shouldBeOpen =
+    savedIsOpen !== null && savedIsOpen !== undefined
+      ? savedIsOpen
+      : (isOpenByDefault ?? facet.is_open_by_default ?? false);
+
+  const [isOpen, setIsOpen] = useState<boolean>(shouldBeOpen);
   const [isLoaded, setIsLoaded] = useState<boolean>(!!options?.length);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Sync isOpen when savedIsOpen changes (hydration or storage event)
+  useEffect(() => {
+    if (savedIsOpen !== null && savedIsOpen !== undefined) {
+      setIsOpen(savedIsOpen);
+    }
+  }, [savedIsOpen]);
 
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -81,16 +109,30 @@ export const Facet: React.FC<FacetProps> = ({
   const facetStateRef = useRef(facetState);
   facetStateRef.current = facetState;
 
-  // Auto-open a lazy facet once it becomes active — either it received a
-  // selection (e.g. restored from URL query params after mount) or it was just
-  // added by the user via "Add Facet" — so the user can see its values.
+  // Auto-open only if marked isOpenByDefault and user has not saved any preference yet
   const didAutoOpenRef = useRef(false);
   useEffect(() => {
-    if (isLazy && !didAutoOpenRef.current && (facetState || isFacetActive)) {
+    if (
+      !didAutoOpenRef.current &&
+      savedIsOpen === null &&
+      facetConfig?.isOpenByDefault
+    ) {
       didAutoOpenRef.current = true;
       setIsOpen(true);
+      setSavedIsOpen(true);
     }
-  }, [isLazy, facetState, isFacetActive]);
+  }, [savedIsOpen, facetConfig?.isOpenByDefault, setSavedIsOpen]);
+
+  // When facet is open, ensure it's marked active and trigger option loading if not already loaded
+  useEffect(() => {
+    if (isOpen) {
+      setFacetActive(facet.id);
+      if (!isLoaded && !isLoading && (!options || !options.length)) {
+        onLoadOptions && onLoadOptions();
+        setIsLoading(true);
+      }
+    }
+  }, [isOpen, isLoaded, isLoading, options, facet.id, onLoadOptions, setFacetActive]);
 
   function getSelectedValues(): string[] {
     return Object.keys(facetStateRef.current || {});
@@ -154,6 +196,11 @@ export const Facet: React.FC<FacetProps> = ({
 
   const isOptionSelected = (optionValue: string) => {
     if (!facetState) {
+      if (facetConfig?.checkedByDefaultOptionValues) {
+        return facetConfig.checkedByDefaultOptionValues
+          .map(valueToString)
+          .includes(valueToString(optionValue));
+      }
       return true;
     }
 
@@ -165,9 +212,10 @@ export const Facet: React.FC<FacetProps> = ({
     return facetOption.matches_count > 0 || !!facetConfig?.canHitEmptyState;
   };
 
-  const handleExpandCollapse = (isOpen: boolean) => {
-    const willOpen = !isOpen;
+  const handleExpandCollapse = (currentIsOpen: boolean) => {
+    const willOpen = !currentIsOpen;
     setIsOpen(willOpen);
+    setSavedIsOpen(willOpen);
 
     // Mark the facet active when expanding so its options get loaded. Lazy
     // facets are inactive until expanded (#6577).
@@ -276,26 +324,53 @@ export const Facet: React.FC<FacetProps> = ({
   return (
     <div data-testid="facet" className="pb-2 border-b border-gray-200">
       <div
-        className="relative lex items-center justify-between px-2 py-2 cursor-pointer hover:bg-gray-50"
+        className="relative flex items-center justify-between px-2 py-2 cursor-pointer hover:bg-gray-50 group"
         onClick={() => handleExpandCollapse(isOpen)}
       >
-        <div className="flex items-center space-x-2">
-          <Icon className="size-5 -m-0.5 text-gray-600" />
+        <div className="flex items-center space-x-1.5 flex-1 min-w-0 pr-14">
+          {dragHandleProps && (
+            <span
+              {...dragHandleProps}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-0.5"
+              title="Drag to reorder"
+            >
+              <Bars2Icon className="h-4 w-4" />
+            </span>
+          )}
+          <Icon className="size-5 -m-0.5 text-gray-600 flex-shrink-0" />
           {isLoading && <Skeleton containerClassName="h-4 w-20" />}
-          {!isLoading && <Title className="text-sm">{facet.name}</Title>}
+          {!isLoading && <Title className="text-sm truncate">{facet.name}</Title>}
         </div>
         {!facet.is_static && (
-          <button
-            data-testid="delete-facet"
-            onClick={(mouseEvent) => {
-              mouseEvent.preventDefault();
-              mouseEvent.stopPropagation();
-              onDelete && onDelete();
-            }}
-            className="absolute right-2 top-2 p-1 text-gray-400 hover:text-gray-600"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+          <div className="absolute right-2 top-2 flex items-center space-x-0.5">
+            <button
+              data-testid="edit-facet"
+              title="Edit facet"
+              onClick={(mouseEvent) => {
+                mouseEvent.preventDefault();
+                mouseEvent.stopPropagation();
+                onEdit && onEdit();
+              }}
+              className="p-1 text-gray-400 hover:text-gray-600"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+            <button
+              data-testid="delete-facet"
+              title="Delete facet"
+              onClick={(mouseEvent) => {
+                mouseEvent.preventDefault();
+                mouseEvent.stopPropagation();
+                onDelete && onDelete();
+              }}
+              className="p-1 text-gray-400 hover:text-red-600"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 

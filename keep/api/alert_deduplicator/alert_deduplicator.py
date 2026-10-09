@@ -64,8 +64,9 @@ class AlertDeduplicator:
             alert_copy = self._remove_field(field, alert_copy)
 
         # calculate the hash
+        from keep.api.core.event_normalization import deduplication_payload
         alert_hash = hashlib.sha256(
-            json.dumps(alert_copy.dict(), default=str, sort_keys=True).encode()
+            json.dumps(deduplication_payload(alert_copy), default=str, sort_keys=True).encode()
         ).hexdigest()
         alert.alert_hash = alert_hash
         # Check if the hash is already in the database.
@@ -187,10 +188,15 @@ class AlertDeduplicator:
                 self.logger.warning(f"Failed to delete attribute {field} from alert")
         else:
             alert_attr = field_parts[0]
-            d = copy.deepcopy(getattr(alert, alert_attr))
+            d = copy.deepcopy(getattr(alert, alert_attr, None))
+            if not isinstance(d, dict):
+                return alert
+            parent = d
             for part in field_parts[1:-1]:
-                d = d[part]
-            del d[field_parts[-1]]
+                parent = parent.get(part)
+                if not isinstance(parent, dict):
+                    return alert
+            parent.pop(field_parts[-1], None)
             setattr(alert, field_parts[0], d)
         return alert
 

@@ -90,7 +90,12 @@ export default function SignInForm({
         providers.credentials.name === "OAuth2Proxy"
       ) {
         console.log("Signing in with OAuth2Proxy provider");
-        signIn("credentials", { callbackUrl: "/" });
+        signIn("credentials", {
+          callbackUrl:
+            typeof searchParams.callbackUrl === "string"
+              ? searchParams.callbackUrl
+              : "/",
+        });
       } else if (
         providers.credentials &&
         providers.credentials.name == "NoAuth"

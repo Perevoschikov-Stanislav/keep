@@ -1,0 +1,38 @@
+version: 1
+visibility: team
+incident_views:
+- id: it
+  name: IT
+  cel: team_id == 'it'
+- id: ops
+  name: OPS
+  cel: team_id == 'ops'
+- id: scanner
+  name: SCANNER
+  cel: alert.namespace.startsWith('scanner') || alert.name.startsWith('Scanner')
+roles:
+  admin:
+  - /keep-admin
+  responder:
+  - /keep-ops-l1
+  - /keep-ops-l2
+  - /keep-it
+  viewer:
+  - /keep-viewer
+  - /keep-scanner
+teams:
+- id: ops
+  groups:
+  - /keep-teams/ops
+  zones:
+  - OPS
+- id: it
+  groups:
+  - /keep-teams/it
+  zones:
+  - IT
+- id: quarantine
+  groups: []
+  zones:
+  - UNASSIGNED
+  visible_to: []

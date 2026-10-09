@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "normalization_events": [
+    {
+      "id": "workload-label",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "cluster": "alpha-cluster",
+          "namespace": "payments",
+          "kind": "workload",
+          "pod": "replica-a",
+          "workload": "billing"
+        }
+      },
+      "expected": {
+        "a": {
+          "resource": "replica-a",
+          "workload": "billing"
+        },
+        "b": {
+          "resource": "replica-a",
+          "workload": "billing"
+        }
+      }
+    },
+    {
+      "id": "owner-before-pod",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "pod": "guess-6f7c9b88d9-abcde",
+          "owner": "actual-owner",
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "workload": "actual-owner"
+        },
+        "b": {
+          "workload": "actual-owner"
+        }
+      }
+    },
+    {
+      "id": "renamed-pod",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "pod": "billing-newreplica",
+          "workload": "billing",
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "workload": "billing",
+          "resource": "billing-newreplica"
+        },
+        "b": {
+          "workload": "billing",
+          "resource": "billing-newreplica"
+        }
+      }
+    },
+    {
+      "id": "pvc",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "persistentvolumeclaim": "database-disk",
+          "namespace": "stateful",
+          "kind": "pvc"
+        }
+      },
+      "expected": {
+        "a": {
+          "kind": "pvc",
+          "resource": "database-disk"
+        },
+        "b": {
+          "kind": "pvc",
+          "resource": "database-disk"
+        }
+      }
+    },
+    {
+      "id": "node",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "node": "worker-17",
+          "kind": "node"
+        }
+      },
+      "expected": {
+        "a": {
+          "kind": "node",
+          "resource": "worker-17"
+        },
+        "b": {
+          "kind": "node",
+          "resource": "worker-17"
+        }
+      }
+    },
+    {
+      "id": "service-alias-priority",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {
+          "service": "database",
+          "application": "ledger-database",
+          "kind": "service"
+        }
+      },
+      "expected": {
+        "a": {
+          "service": "database"
+        },
+        "b": {
+          "service": "ledger-database"
+        }
+      }
+    },
+    {
+      "id": "pod-regex-change",
+      "normalization_ref": "pod-name-fallback",
+      "event": {
+        "labels": {
+          "pod": "billing-6f7c9b88-abcde",
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "workload": "billing"
+        },
+        "b": {
+          "workload": null
+        }
+      }
+    },
+    {
+      "id": "empty-owner-fallback",
+      "normalization_ref": "pod-name-fallback",
+      "event": {
+        "labels": {
+          "pod": "billing-6f7c9b88d9-abcde",
+          "workload": "",
+          "owner": null,
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "workload": "billing"
+        },
+        "b": {
+          "workload": "billing"
+        }
+      }
+    },
+    {
+      "id": "non-string-owner-fallback",
+      "normalization_ref": "pod-name-fallback",
+      "event": {
+        "labels": {
+          "pod": "billing-6f7c9b88d9-abcde",
+          "owner": 12,
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "workload": "billing"
+        },
+        "b": {
+          "workload": "billing"
+        }
+      }
+    },
+    {
+      "id": "unknown-resource",
+      "normalization_ref": "explicit-labels",
+      "event": {
+        "labels": {}
+      },
+      "expected": {
+        "a": {
+          "resource": null,
+          "environment": "lab"
+        },
+        "b": {
+          "resource": null,
+          "environment": "lab"
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "schema": "Notification",
+      "body": {
+        "schema_version": 1,
+        "notification_id": "10000000-0000-4000-8000-000000000001",
+        "event_id": "10000000-0000-4000-8000-000000000002",
+        "event_type": "incident.created",
+        "occurred_at": "2026-10-04T12:00:00Z",
+        "tenant_id": "keep",
+        "team_id": "cedar",
+        "incident_id": "10000000-0000-4000-8000-000000000003",
+        "incident_revision": 1,
+        "episode": 1,
+        "policy_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "correlation_id": "fixture-23",
+        "destination_ref": "cedar-json",
+        "transport_ref": "json",
+        "keep_url": "https://keep.example.org/incidents/10000000-0000-4000-8000-000000000003",
+        "title": "workload: billing",
+        "description": "lab / cluster-one",
+        "color": "#d32f2f",
+        "fields": [
+          {
+            "label": "Workload",
+            "value": "billing"
+          }
+        ],
+        "links": [],
+        "contact_refs": [
+          "cedar-oncall"
+        ],
+        "actions": [
+          {
+            "command": "silence",
+            "label": "Silence",
+            "keep_url": "https://keep.example.org/incidents/10000000-0000-4000-8000-000000000003"
+          }
+        ]
+      }
+    },
+    {
+      "schema": "IncidentCommand",
+      "body": {
+        "schema_version": 1,
+        "client_request_id": "20000000-0000-4000-8000-000000000001",
+        "incident_id": "10000000-0000-4000-8000-000000000003",
+        "expected_revision": 1,
+        "command": "ack",
+        "correlation_id": "fixture-23"
+      }
+    },
+    {
+      "schema": "DeliveryReceipt",
+      "body": {
+        "schema_version": 1,
+        "notification_id": "10000000-0000-4000-8000-000000000001",
+        "destination_ref": "cedar-json",
+        "status": "unknown",
+        "external_id": null,
+        "delivered_revision": null
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "replicas",
+      "rule": "workload",
+      "inputs": [
+        {
+          "normalized": {
+            "cluster": "cluster-one",
+            "namespace": "billing",
+            "kind": "workload",
+            "workload": "payments",
+            "resource": "payments-aaaaaa1111-abcde"
+          }
+        },
+        {
+          "normalized": {
+            "cluster": "cluster-one",
+            "namespace": "billing",
+            "kind": "workload",
+            "workload": "payments",
+            "resource": "payments-bbbbbb2222-fghij"
+          }
+        }
+      ],
+      "expected": {
+        "a": {
+          "same_group": true
+        },
+        "b": {
+          "same_group": false
+        }
+      }
+    },
+    {
+      "id": "join-window",
+      "rule": "workload",
+      "elapsed_seconds": 60,
+      "expected": {
+        "a": {
+          "within_window": true
+        },
+        "b": {
+          "within_window": false
+        }
+      }
+    },
+    {
+      "id": "reopen",
+      "resolved_at": "2026-10-04T12:00:00Z",
+      "recurrence_at": "2026-10-04T12:00:30Z",
+      "expected": {
+        "a": {
+          "same_id": true,
+          "ack": "reset"
+        },
+        "b": {
+          "same_id": false,
+          "ack": "reset"
+        }
+      }
+    },
+    {
+      "id": "ack-deadline",
+      "created_at": "2026-10-04T12:00:00Z",
+      "expected": {
+        "a": {
+          "deadline_at": "2026-10-04T12:10:00Z"
+        },
+        "b": {
+          "deadline_at": "2026-10-04T12:02:00Z"
+        }
+      }
+    },
+    {
+      "id": "flapping",
+      "transitions_in_window": 3,
+      "expected": {
+        "a": {
+          "flapping": false
+        },
+        "b": {
+          "flapping": true
+        }
+      }
+    },
+    {
+      "id": "delivery",
+      "team_index": 0,
+      "event_type": "incident.created",
+      "expected": {
+        "a": {
+          "kinds": [
+            "http_json",
+            "mattermost"
+          ],
+          "independent": true
+        },
+        "b": {
+          "kinds": [
+            "http_json"
+          ],
+          "independent": true
+        }
+      }
+    },
+    {
+      "id": "missing-required",
+      "rule": "workload",
+      "input": {
+        "normalized": {
+          "kind": "workload"
+        }
+      },
+      "expected": {
+        "a": {
+          "decision": "separate_alert"
+        },
+        "b": {
+          "decision": "skip_correlation"
+        }
+      }
+    },
+    {
+      "id": "foreign-team",
+      "team_id": "not-configured",
+      "expected": {
+        "a": {
+          "destinations": []
+        },
+        "b": {
+          "destinations": []
+        }
+      }
+    },
+    {
+      "id": "late-event",
+      "event_time": "2026-10-04T11:00:00Z",
+      "last_transition_at": "2026-10-04T12:00:00Z",
+      "expected": {
+        "a": {
+          "decision": "history_only"
+        },
+        "b": {
+          "decision": "history_only"
+        }
+      }
+    },
+    {
+      "id": "tenant-team-boundary",
+      "rule": "workload",
+      "normalized": {
+        "cluster": "shared",
+        "namespace": "shared",
+        "workload": "shared"
+      },
+      "expected": {
+        "a": {
+          "different_team_same_group": false,
+          "different_tenant_same_group": false
+        },
+        "b": {
+          "different_team_same_group": false,
+          "different_tenant_same_group": false
+        }
+      }
+    }
+  ]
+}

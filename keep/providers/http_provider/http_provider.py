@@ -8,6 +8,7 @@ import typing
 
 import requests
 from requests.exceptions import JSONDecodeError
+from urllib3.exceptions import MaxRetryError, NewConnectionError
 
 from keep.contextmanager.contextmanager import ContextManager
 from keep.providers.base.base_provider import BaseProvider
@@ -24,6 +25,36 @@ class HttpProvider(BaseProvider):
         "localhost",
         "googleapis.com",
     ]
+
+    @staticmethod
+    def deliver_notification(url, payload, *, headers, timeout, method="POST", receipt=False):
+        """Ready transport DTO: bounded response, verified TLS, no credential/payload logs."""
+        try:
+            with requests.request(method, url, json=payload, headers=headers, timeout=timeout,
+                                  allow_redirects=False, stream=True) as response:
+                if not 200 <= response.status_code < 300:
+                    return {"status": "unknown" if response.status_code >= 500 else "failed",
+                            "code": "http_" + str(response.status_code)}
+                if not receipt:
+                    return {"status": "delivered", "external_id": None}
+                raw = response.raw.read(65537, decode_content=True)
+                if len(raw) > 65536:
+                    return {"status": "unknown", "code": "receipt_too_large"}
+                result = json.loads(raw)
+                identifier = result.get("id") if isinstance(result, dict) else None
+                import re
+                if not isinstance(identifier, str) or not re.fullmatch(r"[a-z0-9]{26}", identifier):
+                    return {"status": "unknown", "code": "invalid_receipt"}
+                return {"status": "delivered", "external_id": identifier}
+        except requests.ConnectTimeout:
+            return {"status": "failed", "code": "connect_timeout"}
+        except requests.ConnectionError as error:
+            failure = error.args[0] if error.args else None
+            if isinstance(failure, MaxRetryError) and isinstance(failure.reason, NewConnectionError):
+                return {"status": "failed", "code": "connect_unavailable"}
+            return {"status": "unknown", "code": "transport_result_unknown"}
+        except (requests.RequestException, ValueError, UnicodeError):
+            return {"status": "unknown", "code": "transport_result_unknown"}
 
     def __init__(
         self, context_manager: ContextManager, provider_id: str, config: ProviderConfig

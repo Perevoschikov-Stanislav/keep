@@ -1,0 +1,22 @@
+workflow:
+  id: incident-open
+  name: incident-open
+  description: New incident -> post to Mattermost
+  triggers:
+  - type: incident
+    events:
+    - created
+  actions:
+  - name: notify
+    provider:
+      type: http
+      with:
+        method: POST
+        url: http://keep-mm-bridge:8080/notify
+        headers:
+          X-Bridge-Secret: '{{ secrets.bridge_secret }}'
+        body:
+          incident_id: '{{ incident.id }}'
+          event: created
+    notification: true
+  disabled: true

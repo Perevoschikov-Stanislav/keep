@@ -267,6 +267,8 @@ class ContextManager:
         # If this is a foreach step, we need to append the results to the list
         # so we can iterate over them
         if foreach:
+            if not isinstance(self.steps_context[step_id].get("results"), list):
+                self.steps_context[step_id]["results"] = []
             self.steps_context[step_id]["results"].append(results)
         else:
             self.steps_context[step_id]["results"] = results

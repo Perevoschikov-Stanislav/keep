@@ -8,6 +8,7 @@ import uuid
 import celpy
 
 from keep.api.core.config import config
+from keep.api.core.incident_configuration import configured_operation
 from keep.api.core.db import (
     get_enrichment,
     get_previous_alert_by_fingerprint,
@@ -121,6 +122,7 @@ class WorkflowManager:
                 },
             )
 
+    @configured_operation
     def insert_incident(self, tenant_id: str, incident: IncidentDto, trigger: str):
         all_workflow_models = self.workflow_store.get_all_workflows(tenant_id)
         self.logger.info(
@@ -284,6 +286,7 @@ class WorkflowManager:
             )
             raise
 
+    @configured_operation
     def insert_events(self, tenant_id, events: typing.List[AlertDto | IncidentDto]):
         if not events:
             return

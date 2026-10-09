@@ -1,0 +1,15 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "keep",
+            "image": "keep-backend:lab-usability-20261008-r4",
+            "imagePullPolicy": "IfNotPresent"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+ruleName: lis-case
+sqlQuery:
+  sql: family == "lis" && alertname == "LisCaseError" && has(labels.upstream) && has(labels.error_code)
+  params: {}
+celQuery: family == "lis" && alertname == "LisCaseError" && has(labels.upstream) &&
+  has(labels.error_code)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- upstream
+- error_code
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: 'Lis: {{ alert.cluster }} · {{ alert.upstream }}: {{ alert.error_code
+  }}'
+requireApprove: false
+threshold: 1

@@ -7,12 +7,12 @@ import {
 
 export function getIncidentName(incident: IncidentDto) {
   return (
-    incident.user_generated_name || incident.ai_generated_name || incident.id
+    incident.user_generated_name || incident.generated_name || incident.ai_generated_name || incident.id
   );
 }
 
 export function getIncidentNameWithCreationTime(incident: IncidentDto) {
-  return `${incident.user_generated_name || incident.ai_generated_name || incident.id} (${incident.creation_time})`;
+  return `${getIncidentName(incident)} (${incident.creation_time})`;
 }
 
 export function getIncidentSeverityIconAndColor(

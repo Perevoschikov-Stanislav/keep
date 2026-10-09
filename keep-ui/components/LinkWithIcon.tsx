@@ -17,6 +17,7 @@ type LinkWithIconProps = {
   className?: string;
   testId?: string;
   isExact?: boolean;
+  active?: boolean;
   iconClassName?: string;
   renderBeforeCount?: () => React.JSX.Element | undefined;
   onIconClick?: (e: React.MouseEvent) => void;
@@ -34,6 +35,7 @@ export const LinkWithIcon = ({
   className,
   testId,
   isExact = false,
+  active: activeOverride,
   iconClassName,
   renderBeforeCount,
   onIconClick,
@@ -41,11 +43,11 @@ export const LinkWithIcon = ({
 }: LinkWithIconProps) => {
   const pathname = usePathname();
   const [isHovered, setIsHovered] = useState(false);
-  const isActive = isExact
+  const isActive = activeOverride ?? (isExact
     ? decodeURIComponent(pathname || "") === restOfLinkProps.href?.toString()
     : decodeURIComponent(pathname || "").startsWith(
         restOfLinkProps.href?.toString() || ""
-      );
+      ));
 
   const iconClasses = clsx(
     "group-hover:text-orange-400",

@@ -146,7 +146,8 @@ export default function RulesTable({ mappings, editCallback }: Props) {
             size="xs"
             variant="secondary"
             icon={MdModeEdit}
-            tooltip="Edit"
+            tooltip={context.row.original.is_provisioned ? "Managed through IaC" : "Edit"}
+            disabled={context.row.original.is_provisioned || context.row.original.iac?.managed}
             onClick={(event) => {
               event.stopPropagation();
               editCallback(context.row.original!);
@@ -157,7 +158,8 @@ export default function RulesTable({ mappings, editCallback }: Props) {
             size="xs"
             variant="secondary"
             icon={TrashIcon}
-            tooltip="Delete"
+            tooltip={context.row.original.is_provisioned ? "Managed through IaC" : "Delete"}
+            disabled={context.row.original.is_provisioned || context.row.original.iac?.managed}
             onClick={(event) => {
               event.stopPropagation();
               deleteRule(context.row.original.id!);

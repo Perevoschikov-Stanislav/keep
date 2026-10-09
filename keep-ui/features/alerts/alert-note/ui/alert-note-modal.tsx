@@ -1,5 +1,6 @@
 "use client";
 
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 import React, { useEffect, useState } from "react";
 import "react-quill-new/dist/quill.snow.css";
 import { Button } from "@tremor/react";
@@ -20,9 +21,11 @@ interface AlertNoteModalProps {
 export const AlertNoteModal = ({
   handleClose,
   alert,
-  readOnly = false,
+  readOnly: forcedReadOnly = false,
 }: AlertNoteModalProps) => {
   const api = useApi();
+  const { can } = useUserPermissions();
+  const readOnly = forcedReadOnly || !alert || !can("update:alert", alert);
   const [noteContent, setNoteContent] = useState<string>("");
 
   useEffect(() => {

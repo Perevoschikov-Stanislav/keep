@@ -98,6 +98,9 @@ class LastAlertToIncident(SQLModel, table=True):
             "deleted_at",
         ),
         Index(
+            "idx_lastalerttoincident_tenant_incident", "tenant_id", "incident_id"
+        ),
+        Index(
             "idx_tenant_deleted_fingerprint", "tenant_id", "deleted_at", "fingerprint"
         ),
         {},
@@ -107,6 +110,7 @@ class LastAlertToIncident(SQLModel, table=True):
 class Alert(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     tenant_id: str = Field(foreign_key="tenant.id")
+    team_id: str | None = Field(default=None, index=True)
     tenant: Tenant = Relationship()
     # index=True added because we query top 1000 alerts order by timestamp.
     # On a large dataset, this will be slow without an index.
@@ -127,6 +131,7 @@ class Alert(SQLModel, table=True):
     #            and it is used for deduplication.
     #            alert can be different but have the same fingerprint (e.g. different "firing" and "resolved" will have the same fingerprint but not the same alert_hash)
     alert_hash: str | None
+    correlation_context: dict | None = Field(default=None, sa_column=Column(JSON(none_as_null=True)))
 
     # Define a one-to-one relationship to AlertEnrichment using alert_fingerprint
     alert_enrichment: "AlertEnrichment" = Relationship(

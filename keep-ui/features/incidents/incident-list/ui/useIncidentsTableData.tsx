@@ -12,6 +12,7 @@ import {
   usePollIncidents,
 } from "@/utils/hooks/useIncidents";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { combineIncidentCel } from "@/entities/incidents/model/useIncidentViews";
 
 export interface IncidentsTableDataQuery {
   candidate: boolean | null;
@@ -20,6 +21,7 @@ export interface IncidentsTableDataQuery {
   offset: number;
   sorting: { id: string; desc: boolean };
   filterCel: string | null;
+  viewCel?: string;
   timeFrame: TimeFrameV2 | null;
 }
 
@@ -145,9 +147,9 @@ export const useIncidentsTableData = (query: IncidentsTableDataQuery) => {
       limit: query.limit,
       offset: query.offset,
       sorting: query.sorting,
-      cel: [mainCelQuery, query.filterCel].filter(Boolean).join(" && "),
+      cel: combineIncidentCel(mainCelQuery, query.viewCel, query.filterCel),
     });
-  }, [query.sorting, query.filterCel, query.limit, query.offset, mainCelQuery]);
+  }, [query.sorting, query.filterCel, query.viewCel, query.limit, query.offset, mainCelQuery]);
 
   const {
     data: paginatedIncidentsFromHook,
@@ -184,7 +186,7 @@ export const useIncidentsTableData = (query: IncidentsTableDataQuery) => {
     );
 
   const { data: predictedIncidents, isLoading: isPredictedLoading } =
-    useIncidents({ candidate: true, predicted: true });
+    useIncidents({ candidate: true, predicted: true, cel: query.viewCel });
 
   const [paginatedIncidentsToReturn, setPaginatedIncidentsToReturn] = useState<
     PaginatedIncidentsDto | undefined
@@ -214,7 +216,7 @@ export const useIncidentsTableData = (query: IncidentsTableDataQuery) => {
     isEmptyState: defaultIncidents?.count === 0,
     predictedIncidents,
     isPredictedLoading,
-    facetsCel: mainCelQuery,
+    facetsCel: query.filterCel === null ? null : combineIncidentCel(mainCelQuery, query.viewCel),
     incidentChangeToken,
     incidentsError,
   };

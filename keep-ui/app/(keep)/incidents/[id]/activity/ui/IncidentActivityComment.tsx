@@ -9,6 +9,7 @@ import { AuditEvent } from "@/entities/alerts/model";
 import { useUsers } from "@/entities/users/model/useUsers";
 import { extractTaggedUsers } from "../lib/extractTaggedUsers";
 import { IncidentCommentInput } from "./IncidentCommentInput.dynamic";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 
 /**
  * Component for adding comments to an incident with user mention capability
@@ -23,6 +24,8 @@ export function IncidentActivityComment({
   const [comment, setComment] = useState("");
 
   const api = useApi();
+  const { can } = useUserPermissions();
+  const canComment = can("update:incident", incident);
 
   const { data: users = [] } = useUsers();
   const onSubmit = useCallback(async () => {
@@ -43,6 +46,8 @@ export function IncidentActivityComment({
 
   return (
     <div className="border border-tremor-border rounded-tremor-default shadow-tremor-input flex flex-col">
+      {!canComment && <p className="p-2 text-sm text-gray-500">Read only: commenting requires access to change this incident</p>}
+      <fieldset disabled={!canComment}>
       <IncidentCommentInput
         value={comment}
         onValueChange={setComment}
@@ -55,12 +60,13 @@ export function IncidentActivityComment({
         <Button
           color="orange"
           variant="primary"
-          disabled={!comment}
+          disabled={!comment || !canComment}
           onClick={onSubmit}
         >
           Comment
         </Button>
       </div>
+      </fieldset>
     </div>
   );
 }

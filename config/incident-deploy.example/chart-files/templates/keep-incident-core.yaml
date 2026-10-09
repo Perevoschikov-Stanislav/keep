@@ -1,0 +1,29 @@
+{{- if .Values.incidentCore.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keep-incident-core
+  namespace: {{ .Release.Namespace }}
+data:
+{{- range $path, $_ := .Files.Glob "incident-core/**" }}
+  {{ $path | trimPrefix "incident-core/" | replace "/" "__" }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+{{- range $field := list "transport" "service" }}
+apiVersion: jonasasx.io/v1alpha1
+kind: Secretor
+metadata:
+  name: keep-core-{{ $field }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  type: generate
+  generating:
+    length: {{ $.Values.secretor.apiKeyLength }}
+  injectTo:
+    - secretRef:
+        name: keep-core-bridge
+        field: {{ $field }}
+---
+{{- end }}
+{{- end }}

@@ -26,6 +26,7 @@ from keep.api.core.db import (
     get_custom_deduplication_rule,
     get_enrichments,
     get_provider_by_name,
+    get_session_sync,
     is_linked_provider,
 )
 from keep.api.logging import ProviderLoggerAdapter
@@ -317,8 +318,9 @@ class BaseProvider(metaclass=abc.ABCMeta):
                 )
                 continue
         self.logger.info("Enriching alert", extra={"fingerprint": fingerprint})
+        db_session = get_session_sync()
         try:
-            enrichments_bl = EnrichmentsBl(self.context_manager.tenant_id)
+            enrichments_bl = EnrichmentsBl(self.context_manager.tenant_id, db=db_session)
             enrichment_string = ", ".join(
                 [f"{key}={value}" for key, value in _enrichments.items()]
             )
@@ -332,6 +334,10 @@ class BaseProvider(metaclass=abc.ABCMeta):
                 "action_callee": "system",
                 "audit_enabled": audit_enabled,
             }
+            if entity_type == "incident":
+                common_kwargs["entity_type"] = "incident"
+                common_kwargs["expected_team_id"] = getattr(self.context_manager.incident_context, "team_id", None)
+                common_kwargs["automation_operation"] = getattr(self.context_manager, "automation_operation", None)
 
             if _enrichments:
                 # enrich the alert with _enrichments
@@ -364,6 +370,8 @@ class BaseProvider(metaclass=abc.ABCMeta):
                 extra={"fingerprint": fingerprint, "provider": self.provider_id},
             )
             raise e
+        finally:
+            db_session.close()
         self.logger.info(
             f"{entity_type.capitalize()} enriched", extra={"fingerprint": fingerprint}
         )
@@ -514,6 +522,9 @@ class BaseProvider(metaclass=abc.ABCMeta):
             list[AlertDto]: The same alerts, with fingerprints overridden if a rule exists.
         """
         logger = logging.getLogger(__name__)
+        from keep.api.core.event_normalization import fingerprints_deferred
+        if fingerprints_deferred():
+            return alerts
         custom_deduplication_rule = get_custom_deduplication_rule(
             tenant_id=tenant_id,
             provider_id=provider_id,
@@ -552,6 +563,15 @@ class BaseProvider(metaclass=abc.ABCMeta):
         logger = logging.getLogger(__name__)
         if not fingerprint_fields:
             return alert.name
+        from keep.api.core.event_normalization import known_normalized_field, path_value
+        if any(not known_normalized_field(alert.dict(), field) for field in fingerprint_fields):
+            # A display fallback is not an object identity. Preserve the provider's key.
+            return alert.fingerprint
+        if any(field.startswith("normalized.") for field in fingerprint_fields):
+            identity = ["normalized-v1", alert.team_id,
+                        [[field, path_value(alert.dict(), field)] for field in fingerprint_fields]]
+            return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":"),
+                                             ensure_ascii=False, default=str).encode()).hexdigest()
         fingerprint = hashlib.sha256()
         event_dict = alert.dict()
         matched_fields = []

@@ -609,7 +609,9 @@ class ProvidersFactory:
         return provider_class
 
     @staticmethod
-    def get_linked_providers(tenant_id: str) -> list[Provider]:
+    def get_linked_providers(
+        tenant_id: str, allowed_team_ids: frozenset[str] | None = None
+    ) -> list[Provider]:
         """
         Get the linked providers.
 
@@ -619,7 +621,7 @@ class ProvidersFactory:
         Returns:
             list: The linked providers.
         """
-        linked_providers = get_linked_providers(tenant_id)
+        linked_providers = get_linked_providers(tenant_id, allowed_team_ids)
         available_providers = ProvidersFactory.get_all_providers()
 
         _linked_providers = []

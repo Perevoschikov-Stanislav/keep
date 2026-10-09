@@ -30,6 +30,24 @@ class MattermostProvider(BaseProvider):
     PROVIDER_DISPLAY_NAME = "Mattermost"
     PROVIDER_CATEGORY = ["Collaboration"]
 
+    @staticmethod
+    def notification_payload(notification, channel_id, addresses):
+        """Render already selected fields/actions; action links require confirmation in Keep."""
+        fields = [{"title": item["label"], "value": str(item["value"]) if item["value"] is not None else "unknown", "short": True}
+                  for item in notification["fields"]]
+        links = notification["links"] + [{"label": item["label"], "url": item["keep_url"]}
+                                          for item in notification["actions"]]
+        attachment = {"title": notification["title"], "text": notification["description"], "fields": fields,
+                      "footer": " · ".join(([notification["footer"]] if notification.get("footer") else []) +
+                                             [f'[{item["label"]}]({item["url"]})' for item in links])}
+        if notification.get("color"):
+            attachment["color"] = notification["color"]
+        # Addresses are IaC data; the adapter does not infer a role or team from them.
+        return {"channel_id": channel_id, "message": " ".join(addresses), "props": {
+            "attachments": [attachment], "keep_notification_id": notification["notification_id"],
+            "keep_incident_id": notification["incident_id"],
+            "keep_projection_revision": notification["projection_revision"]}}
+
     def __init__(
         self, context_manager: ContextManager, provider_id: str, config: ProviderConfig
     ):

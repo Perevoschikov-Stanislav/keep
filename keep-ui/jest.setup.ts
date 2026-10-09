@@ -3,13 +3,15 @@ import "@/shared/tests/next-auth-mock";
 import React from "react";
 
 // Mocks
-window.ResizeObserver = class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-};
+if (typeof window !== "undefined") {
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
 
-window.confirm = jest.fn();
+  window.confirm = jest.fn();
+}
 
 jest.mock("react-code-blocks", () => ({
   CopyBlock: ({ text }: { text: string }) => null,

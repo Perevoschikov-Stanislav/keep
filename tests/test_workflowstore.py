@@ -164,8 +164,8 @@ def test_provision_workflows_no_duplicates(monkeypatch, db_session, test_app):
     ],
     indirect=True,
 )
-def test_unprovision_workflows(monkeypatch, db_session, test_app):
-    """Test that provisioned workflows are deleted when they are no longer provisioned via env or dir."""
+def test_retains_workflows_without_input(monkeypatch, db_session, test_app):
+    """Absent input retains provisioned workflows until a reviewed deletion."""
     # First provisioning
     WorkflowStore.provision_workflows(SINGLE_TENANT_UUID)
 
@@ -178,7 +178,7 @@ def test_unprovision_workflows(monkeypatch, db_session, test_app):
 
     # Get workflows after second provisioning
     second_provisioned = get_all_provisioned_workflows(SINGLE_TENANT_UUID)
-    assert len(second_provisioned) == 0
+    assert len(second_provisioned) == 1
 
 
 @pytest.mark.parametrize(
@@ -191,13 +191,12 @@ def test_unprovision_workflows(monkeypatch, db_session, test_app):
     indirect=True,
 )
 def test_invalid_workflows_dir(monkeypatch, db_session, test_app):
-    """Test exception is raised when invalid dir is passed as KEEP_WORKFLOWS_DIRECTORY."""
+    """A missing workflow directory retains the previous configuration."""
 
     monkeypatch.setenv("KEEP_WORKFLOWS_DIRECTORY", "./tests/provision/workflows_404")
 
     # First provisioning
-    with pytest.raises(FileNotFoundError):
-        WorkflowStore.provision_workflows(SINGLE_TENANT_UUID)
+    WorkflowStore.provision_workflows(SINGLE_TENANT_UUID)
 
     # Get workflows after first provisioning
     provisioned = get_all_provisioned_workflows(SINGLE_TENANT_UUID)
@@ -215,7 +214,7 @@ def test_invalid_workflows_dir(monkeypatch, db_session, test_app):
     indirect=True,
 )
 def test_change_workflow_provision_method(monkeypatch, db_session, test_app):
-    """Test that provisioned workflows are deleted when they are no longer provisioned via env or dir."""
+    """Absent input retains provisioned workflows until a reviewed deletion."""
     # First provisioning
     WorkflowStore.provision_workflows(SINGLE_TENANT_UUID)
 
@@ -231,9 +230,9 @@ def test_change_workflow_provision_method(monkeypatch, db_session, test_app):
 
     # Get workflows after second provisioning
     second_provisioned = get_all_provisioned_workflows(SINGLE_TENANT_UUID)
-    assert len(second_provisioned) == 1
-    assert second_provisioned[0].name == "Retrieve CloudWatch Logs"
-    assert is_workflow_raw_equal(second_provisioned[0].workflow_raw, VALID_WORKFLOW)
+    assert len(second_provisioned) == 4
+    new = next(workflow for workflow in second_provisioned if workflow.name == "Retrieve CloudWatch Logs")
+    assert is_workflow_raw_equal(new.workflow_raw, VALID_WORKFLOW)
 
 
 def test_workflow_execution_large_results_many_logs_performance(db_session):

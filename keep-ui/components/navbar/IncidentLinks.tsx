@@ -8,6 +8,8 @@ import { IoChevronUp } from "react-icons/io5";
 import { useIncidents, usePollIncidents } from "utils/hooks/useIncidents";
 import { MdFlashOn } from "react-icons/md";
 import clsx from "clsx";
+import { usePathname, useSearchParams } from "next/navigation";
+import { IncidentView, useIncidentViews, combineIncidentCel } from "@/entities/incidents/model/useIncidentViews";
 import {
   DEFAULT_INCIDENTS_PAGE_SIZE,
   DEFAULT_INCIDENTS_CEL,
@@ -16,8 +18,11 @@ import {
 
 type IncidentsLinksProps = { session: Session | null };
 
-export const IncidentsLinks = ({ session }: IncidentsLinksProps) => {
-  const isNOCRole = session?.userRole === "noc";
+function IncidentViewLink({ view }: { view: IncidentView }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const selected = searchParams?.get("view") || "all";
+  const active = pathname === "/incidents" && selected === view.id;
   const { data: incidents, mutate } = useIncidents(
     {
       candidate: false,
@@ -25,11 +30,32 @@ export const IncidentsLinks = ({ session }: IncidentsLinksProps) => {
       limit: 0,
       offset: 0,
       sorting: DEFAULT_INCIDENTS_SORTING,
-      cel: DEFAULT_INCIDENTS_CEL,
+      cel: combineIncidentCel(DEFAULT_INCIDENTS_CEL, view.cel),
     },
     {}
   );
   usePollIncidents(mutate);
+  return (
+    <li>
+      <LinkWithIcon
+        href={view.id === "all" ? "/incidents" : `/incidents?view=${encodeURIComponent(view.id)}`}
+        icon={MdFlashOn}
+        count={incidents?.count}
+        testId={`incident-view-${view.id}`}
+        aria-current={active ? "page" : undefined}
+        active={active}
+        className={active ? "bg-stone-200/50" : undefined}
+        isExact
+      >
+        <Subtitle className={clsx("text-xs", active && "!text-orange-400")}>{view.name}</Subtitle>
+      </LinkWithIcon>
+    </li>
+  );
+}
+
+export const IncidentsLinks = ({ session }: IncidentsLinksProps) => {
+  const isNOCRole = session?.userRole === "noc";
+  const { views } = useIncidentViews();
 
   if (isNOCRole) {
     return null;
@@ -51,16 +77,7 @@ export const IncidentsLinks = ({ session }: IncidentsLinksProps) => {
       </Disclosure.Button>
 
       <Disclosure.Panel as="ul" className="space-y-0.5 p-1 pr-1">
-        <li className="relative">
-          <LinkWithIcon
-            href="/incidents"
-            icon={MdFlashOn}
-            count={incidents?.count}
-            testId="incidents"
-          >
-            <Subtitle className="text-xs">Incidents</Subtitle>
-          </LinkWithIcon>
-        </li>
+        {views.map((view) => <IncidentViewLink key={view.id} view={view} />)}
       </Disclosure.Panel>
     </Disclosure>
   );

@@ -1,0 +1,22 @@
+# Инцидент изменился (статус, исполнитель, новые/закрывшиеся алерты) → мост keep-mm: правка поста и строки в тред.
+# notification: true включает проверку сайленсов перед отправкой.
+workflow:
+  id: incident-update
+  name: incident-update
+  description: Изменение инцидента → keep-mm (правка поста, строки в тред)
+  triggers:
+    - type: incident
+      events: [updated]
+  actions:
+    - name: notify
+      notification: true
+      provider:
+        type: http
+        with:
+          method: POST
+          url: "${MM_BRIDGE_URL}/notify"
+          headers:
+            X-Bridge-Secret: "{{ secrets.bridge_secret }}"
+          body:
+            incident_id: "{{ incident.id }}"
+            event: updated

@@ -48,8 +48,10 @@ class ProvidersService:
         )
 
     @staticmethod
-    def get_linked_providers(tenant_id: str) -> List[ProviderModel]:
-        return ProvidersFactory.get_linked_providers(tenant_id)
+    def get_linked_providers(
+        tenant_id: str, allowed_team_ids: frozenset[str] | None = None
+    ) -> List[ProviderModel]:
+        return ProvidersFactory.get_linked_providers(tenant_id, allowed_team_ids)
 
     @staticmethod
     def validate_scopes(

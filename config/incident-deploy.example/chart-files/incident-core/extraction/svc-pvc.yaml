@@ -1,0 +1,8 @@
+name: svc-pvc
+description: 'svc: first non-empty value from persistentvolumeclaim'
+priority: 5
+attribute: '{{persistentvolumeclaim}}|-'
+regex: ^(?:[^-|]*\d[^-|]*-)*(?P<svc>[^-\d|]+(?=[-|]|$)(?:-[^-\d|]+(?=[-|]|$))*)
+condition: null
+disabled: false
+pre: false

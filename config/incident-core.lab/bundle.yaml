@@ -1,0 +1,814 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: incident-core-lab
+tenant_id: keep
+revision: core-usability-20261008
+keep_url: http://localhost:8000
+access:
+  path: teams.yaml
+    sha256: 967a1f6feec6cb7bcaa96bd05cf892b206cc1d4e0b93795b4be07e10ccfc2e50
+runtime_ownership:
+- team_id: ops
+  domain: keep
+  notifications: keep
+  legacy_snooze: disabled
+- team_id: it
+  domain: keep
+  notifications: keep
+  legacy_snooze: disabled
+- team_id: quarantine
+  domain: keep
+  notifications: disabled
+  legacy_snooze: disabled
+- team_id: null
+  domain: disabled
+  notifications: disabled
+  legacy_snooze: disabled
+mappings:
+- id: families
+  artifact:
+    path: mappings/families.yaml
+    sha256: 5cc2983bedca56572b367279960d9e0127b702212bb39e6e5f1101575506abd9
+- id: zone-hosts
+  artifact:
+    path: mappings/zone-hosts.yaml
+    sha256: 53463ead0a3a90cb903539941951744ca5f616cb4302aa5a79f9fca12b1dcda7
+- id: zone-namespaces
+  artifact:
+    path: mappings/zone-namespaces.yaml
+    sha256: d9d0d128abbdded08d9e25bd4950c34043cf1960c228b19eb9fc3eb1176512b7
+- id: zones
+  artifact:
+    path: mappings/zones.yaml
+    sha256: 11d893e2c79d97a966195222e1f58fd6fad89a479b07b8d11d04acfa3a88e6e9
+extraction:
+- id: svc-pvc
+  artifact:
+    path: extraction/svc-pvc.yaml
+    sha256: eb604b2ade6906231e0033be9a019ec788e05b62ab180e34f3c4624ffc0dec19
+- id: svc
+  artifact:
+    path: extraction/svc.yaml
+    sha256: 98ca911fd218431136f963750aba1cf25a58b755d175984bb98b3a670d87b051
+workflows:
+- id: incident-open
+  artifact:
+    path: workflows/incident-open.yaml
+    sha256: 0f83938a3e159b179a06fdca0d75ff14c29a00ef03ec6276e0ee6793e3011843
+- id: incident-update
+  artifact:
+    path: workflows/incident-update.yaml
+    sha256: a4f85473d5e8ee9f1a068de97c57164bb3a81c7c50f39c5535248c64ab052308
+adoptions: []
+normalization:
+- id: core
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 100
+  match: 'true'
+  fields:
+  - name: cluster
+    sources:
+    - cluster
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - env_kind
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - namespace
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - family
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - svc
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - svc
+    missing:
+      mode: mark_unknown
+  - name: routing_level
+    sources:
+    - level
+    - labels.level
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.case
+    - labels.upstream
+    - labels.pod
+    - labels.deployment
+    - labels.statefulset
+    - labels.daemonset
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.instance
+    - labels.server
+    - labels.consumergroup
+    - labels.topic
+    - alertname
+    missing:
+      mode: mark_unknown
+presentations:
+- id: engineer
+  title: '{{ normalized.cluster }} · {{ normalized.namespace }} · {{ normalized.service
+    }}: {{ normalized.kind }}'
+  description: '{{ incident.collections.details }}'
+  fields:
+  - path: incident.status
+    label: Status
+    order: 0
+  - path: incident.assignee
+    label: Assignee
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+  - path: normalized.namespace
+    label: Namespace
+    order: 3
+  - path: normalized.service
+    label: Service
+    order: 4
+  - path: incident.collections.objects
+    label: Objects
+    order: 5
+  - path: incident.collections.alerts
+    label: Alerts
+    order: 6
+  - path: incident.alerts_count
+    label: Alert count
+    order: 7
+  - path: normalized.routing_level
+    label: Routing level
+    order: 8
+  - path: incident.severity
+    label: Severity
+    order: 9
+  - path: incident.flapping.active
+    label: Flapping
+    order: 10
+  - path: incident.start_time
+    label: Started
+    order: 11
+  - path: incident.end_time
+    label: Ended
+    order: 12
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: assign
+    label: Assign to me
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  links:
+  - label: Incident in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  severity_colors:
+    info: '#707070'
+    low: '#707070'
+    medium: '#f0ad4e'
+    high: '#d00000'
+    critical: '#d00000'
+  collections:
+  - id: objects
+    sources:
+    - normalized.resource
+    - labels.case
+    - labels.upstream
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.instance
+    - labels.server
+    - labels.consumergroup
+    - labels.topic
+    - labels.deployment
+    - labels.daemonset
+    - labels.statefulset
+    - alertname
+    max_items: 20
+    max_chars: 2048
+  - id: details
+    sources:
+    - description
+    - annotations.description
+    - annotations.summary
+    - message
+    max_items: 20
+    max_chars: 2048
+  - id: alerts
+    sources:
+    - alertname
+    - name
+    max_items: 20
+    max_chars: 2048
+  source_links:
+  - label: Runbook
+    sources:
+    - annotations.runbook_url
+    - runbook_url
+    max_items: 20
+  - label: Prometheus
+    sources:
+    - generatorURL
+    - generatorUrl
+    max_items: 20
+  prefer_active_alerts: true
+  max_links: 50
+lifecycle:
+- id: core
+  resolve_on: all_resolved
+  reopen:
+    mode: reopen
+    within_seconds: 10800
+    ack: reset
+    assignee: preserve
+  flapping:
+    enabled: true
+    window_seconds: 3600
+    transition_threshold: 2
+    reset_after_seconds: 3600
+  clock: receive_time
+  late_event_policy: history_only
+correlation_overlap: first_match
+correlation:
+- id: lis-case
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 1000
+  match: family == "lis" && alertname == "LisCaseError" && has(labels.upstream) &&
+    has(labels.error_code)
+  group_by: &id001
+  - cluster
+  - upstream
+  - error_code
+  required_fields: *id001
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: lis
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 999
+  match: family == "lis" && has(labels.upstream) && !(alertname == "LisCaseError"
+    && has(labels.error_code))
+  group_by: &id002
+  - cluster
+  - upstream
+  required_fields: *id002
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: workload
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 998
+  match: family == "workload" && has(labels.namespace)
+  group_by: &id003
+  - cluster
+  - namespace
+  - svc
+  required_fields: *id003
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: probe-stands
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 997
+  match: family == "probe" && env_kind == "stand" && has(labels.namespace)
+  group_by: &id004
+  - cluster
+  - namespace
+  required_fields: *id004
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: probe
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 996
+  match: family == "probe" && env_kind != "stand" && has(labels.namespace)
+  group_by: &id005
+  - cluster
+  - namespace
+  - svc
+  required_fields: *id005
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: k8s-node
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 995
+  match: family == "k8s-node" && has(labels.node)
+  group_by: &id006
+  - cluster
+  - node
+  required_fields: *id006
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: node
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 994
+  match: family == "node" && has(labels.instance)
+  group_by: &id007
+  - cluster
+  - instance
+  required_fields: *id007
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: longhorn
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 993
+  match: family == "storage" && alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+    && has(labels.node)
+  group_by: &id008
+  - cluster
+  - node
+  required_fields: *id008
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: storage-pvc
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 992
+  match: family == "storage" && has(labels.persistentvolumeclaim) && has(labels.namespace)
+    && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request") && has(labels.node))
+  group_by: &id009
+  - cluster
+  - namespace
+  - svc
+  required_fields: *id009
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: storage-host
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 991
+  match: family == "storage" && has(labels.instance) && !alertname.startsWith("Longhorn")
+    && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+  group_by: &id010
+  - cluster
+  - instance
+  required_fields: *id010
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: storage
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 990
+  match: family == "storage" && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+    && has(labels.node)) && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+    && !(has(labels.instance) && !alertname.startsWith("Longhorn"))
+  group_by: &id011
+  - cluster
+  - alertname
+  - svc
+  required_fields: *id011
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: db
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 989
+  match: family == "db" && has(labels.namespace)
+  group_by: &id012
+  - cluster
+  - namespace
+  - svc
+  required_fields: *id012
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: kafka
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 988
+  match: family == "kafka"
+  group_by: &id013
+  - cluster
+  - alertname
+  required_fields: *id013
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: other-namespace
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 987
+  match: family == "other" && has(labels.namespace)
+  group_by: &id014
+  - cluster
+  - namespace
+  - svc
+  required_fields: *id014
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: other
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 986
+  match: family == "other" && !has(labels.namespace)
+  group_by: &id015
+  - cluster
+  - alertname
+  - svc
+  required_fields: *id015
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+- id: unlabeled
+  team_ids:
+  - ops
+  - it
+  - quarantine
+  priority: 985
+  match: family == "lis" && !has(labels.upstream) || family in ["workload", "db"]
+    && !has(labels.namespace) || family == "probe" && !has(labels.namespace) || family
+    == "k8s-node" && !has(labels.node) || family == "node" && !has(labels.instance)
+  group_by: &id016
+  - cluster
+  - alertname
+  required_fields: *id016
+  missing_required: separate_alert
+  window_seconds: 10800
+  threshold: 1
+  lifecycle_ref: core
+  presentation_ref: engineer
+transports:
+- id: mattermost-core
+  kind: mattermost
+  adapter_ref: mattermost-bridge-v1
+  endpoint: http://keep-notification-bridge:8080
+  auth_ref: env:BRIDGE_TRANSPORT_TOKEN
+  callback_client_ref: mattermost-core-recovery
+  capabilities:
+    update: true
+    actions: false
+    receipts: true
+  delivery:
+    timeout_seconds: 12
+    retry: &id017
+      max_attempts: 6
+      initial_backoff_seconds: 2
+      max_backoff_seconds: 60
+      multiplier: 2
+    rate_limit: &id018
+      per_second: 10
+      burst: 20
+    debounce_seconds: 60
+- id: silence-events
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: http://keep-notification-bridge:8080
+  auth_ref: env:BRIDGE_TRANSPORT_TOKEN
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 12
+    retry: *id017
+    rate_limit: *id018
+    debounce_seconds: 0
+destinations:
+- id: ops-integration-customer-a-incidents
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000007
+- id: ops-integration-customer-b-incidents
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000004
+- id: ops-customer-a-incidents
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000011
+- id: ops-customer-b-incidents
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000001
+- id: ops-cloud-incidents
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000012
+- id: ops-test-incidents-it
+  team_id: ops
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000008
+- id: it-test-incidents-it
+  team_id: it
+  transport_ref: mattermost-core
+  options:
+    channel_id: examplechannel000000000008
+- id: ops-silences
+  team_id: ops
+  transport_ref: silence-events
+  options:
+    path: /events
+- id: it-silences
+  team_id: it
+  transport_ref: silence-events
+  options:
+    path: /events
+routes:
+- id: route-0
+  team_ids:
+  - ops
+  priority: 1000
+  match: normalized.cluster in ["customer-a", "platform-customer-a"] && normalized.kind
+    == "lis" && incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-integration-customer-a-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-1
+  team_ids:
+  - ops
+  priority: 999
+  match: normalized.cluster in ["customer-b"] && normalized.kind == "lis" && incident.created_at
+    >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-integration-customer-b-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-2
+  team_ids:
+  - ops
+  priority: 998
+  match: normalized.cluster in ["customer-a", "platform-customer-a"] && incident.created_at
+    >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-customer-a-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-3
+  team_ids:
+  - ops
+  priority: 997
+  match: normalized.cluster in ["customer-b"] && incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-customer-b-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-4
+  team_ids:
+  - ops
+  priority: 996
+  match: normalized.cluster in ["production-cluster"] && incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-cloud-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-5
+  team_ids:
+  - ops
+  priority: 995
+  match: normalized.cluster in ["infra-cluster"] && normalized.namespace == "prod"
+    && incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-cloud-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-6
+  team_ids:
+  - ops
+  priority: 994
+  match: normalized.cluster in ["infra-cluster"] && normalized.namespace == "app-prod"
+    && incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-cloud-incidents
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+- id: route-7
+  team_ids:
+  - ops
+  - it
+  priority: 993
+  match: incident.created_at >= "2026-10-07T17:59:24Z"
+  event_types:
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - ops-test-incidents-it
+  - it-test-incidents-it
+  presentation_ref: engineer
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+  after_silence: current_active
+  initial_delivery: active_only
+subscribers:
+- id: silence-projection
+  team_ids:
+  - ops
+  - it
+  event_types:
+  - silence.created
+  - silence.updated
+  - silence.activated
+  - silence.cancelled
+  - silence.expired
+  destination_refs:
+  - ops-silences
+  - it-silences
+service_clients:
+- id: mattermost-core-recovery
+  auth_ref: env:KEEP_BRIDGE_SERVICE_TOKEN
+  origin: notification-recovery
+  team_ids:
+  - ops
+  - it
+  scopes:
+  - read:incident
+  - read:silence
+  - update:notification
+  proof_profile_refs: []
+dispatch:
+  scan_interval_seconds: 2
+  batch_size: 100
+  lease_seconds: 60
+  snapshot_page_size: 100

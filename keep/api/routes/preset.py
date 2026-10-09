@@ -37,6 +37,7 @@ from keep.api.tasks.process_incident_task import process_incident
 from keep.api.tasks.process_topology_task import process_topology
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import accessible_alert_fingerprints
 from keep.providers.base.base_provider import BaseIncidentProvider, BaseTopologyProvider
 from keep.providers.providers_factory import ProvidersFactory
 from keep.searchengine.searchengine import SearchEngine
@@ -473,6 +474,10 @@ def get_preset_alerts(
 
     search_engine = SearchEngine(tenant_id=tenant_id)
     preset_alerts = search_engine.search_alerts(preset_dto.query)
+    accessible = accessible_alert_fingerprints(
+        authenticated_entity, {alert.fingerprint for alert in preset_alerts}
+    )
+    preset_alerts = [alert for alert in preset_alerts if alert.fingerprint in accessible]
     logger.info("Got preset alerts", extra={"preset_name": preset_name})
 
     response.headers["X-Search-Type"] = str(search_engine.search_mode.value)

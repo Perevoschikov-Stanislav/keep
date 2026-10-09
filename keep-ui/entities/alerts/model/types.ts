@@ -1,3 +1,7 @@
+import { SilenceMetadata } from "@/entities/silences/model";
+import type { EventPresentation, NormalizedFields } from "@/shared/lib/event-presentation";
+import type { AlertCorrelation } from "@/shared/lib/incident-correlation";
+
 export enum Severity {
   Critical = "critical",
   High = "high",
@@ -33,6 +37,11 @@ export enum Status {
 
 export interface AlertDto {
   id: string;
+  team_id?: string | null;
+  normalized?: NormalizedFields | null;
+  correlation?: AlertCorrelation | null;
+  normalization?: Record<string, unknown> | null;
+  presentation?: EventPresentation | null;
   event_id: string;
   name: string;
   status: Status;
@@ -53,6 +62,7 @@ export interface AlertDto {
   fingerprint: string;
   deleted: boolean;
   dismissed: boolean;
+  silence?: SilenceMetadata | null;
   assignee?: string;
   ticket_url: string;
   ticket_status?: string;

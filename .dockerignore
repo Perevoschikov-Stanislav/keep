@@ -6,3 +6,10 @@ keep-ui/.env.local
 .vercel/
 .vscode/
 .github/
+.lab-tmp/
+.lab-work/
+.git/
+
+scratch/
+
+docs/local-tasks/

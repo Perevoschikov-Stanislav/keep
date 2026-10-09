@@ -307,7 +307,7 @@ export const useAlertTableCols = (
               <div className="flex flex-wrap gap-1 w-full overflow-hidden">
                 {incidents.map((incident) => {
                   const title =
-                    incident.user_generated_name || incident.ai_generated_name;
+                    incident.user_generated_name || incident.generated_name || incident.ai_generated_name;
                   return (
                     <Link
                       key={incident.id}

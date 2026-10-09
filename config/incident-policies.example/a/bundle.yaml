@@ -1,0 +1,29 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: incident-policies-example
+tenant_id: keep
+revision: example-a
+keep_url: https://keep.example.net
+access:
+  path: teams.yaml
+    sha256: 5e4d460eb11a8277cfe8367beaf5e85372bbf5bf7070cbb7ba5784f69b116a44
+mappings:
+- id: component-ownership
+  artifact:
+    path: mapping.yaml
+    sha256: 757da0e881006a1515a5794cfcee1291a17bd7589a26621bead7c88c996e20aa
+extraction:
+- id: component-name
+  artifact:
+    path: extraction.yaml
+    sha256: be63b1ad2881aef507c928fcfad150562a77a2d484ec7615cde4f8c7364dc9f5
+rules:
+- id: component-incidents
+  artifact:
+    path: rule.yaml
+    sha256: 45040dc2f32bf016b73c4c9560b0ecfcd402393591aed4008f1503ec0d519bb3
+workflows:
+- id: record-example
+  artifact:
+    path: workflow.yaml
+    sha256: 969762ec468722e493cb9e4fdaef594e99aa9264a0978f3278f5cc1e8354d1a1

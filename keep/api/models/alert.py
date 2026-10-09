@@ -12,6 +12,7 @@ import pytz
 from pydantic import AnyHttpUrl, BaseModel, Extra, root_validator, validator
 
 from keep.api.models.severity_base import SeverityBaseInterface
+from keep.api.models.silence import SilenceMetadata
 
 if TYPE_CHECKING:
     pass
@@ -74,6 +75,7 @@ class AlertErrorDto(BaseModel):
 
 class AlertDto(BaseModel):
     id: str | None
+    team_id: str | None = None
     name: str
     status: AlertStatus
     severity: AlertSeverity
@@ -104,7 +106,12 @@ class AlertDto(BaseModel):
         False  # @tal: Obselete field since we have dismissed, but kept for backwards compatibility
     )
     dismissUntil: str | None = None  # The time until the alert is dismissed
-    # DO NOT MOVE DISMISSED ABOVE dismissedUntil since it is used in root_validator
+    silence: SilenceMetadata | None = None
+    normalized: dict | None = None
+    correlation: dict | None = None
+    normalization: dict | None = None
+    presentation: dict | None = None
+    # These two fields must precede dismissed: its validator reads both.
     dismissed: bool = False  # Whether the alert has been dismissed
     assignee: str | None = None  # The assignee of the alert
     providerId: str | None = None  # The provider id
@@ -117,6 +124,18 @@ class AlertDto(BaseModel):
 
     enriched_fields: list = []
     incident: str | None = None
+
+    def to_ingestion_dict(self) -> dict:
+        """Keep server-derived response fields out of stored events and dedup hashes."""
+        event = self.dict(exclude={"silence"} | {
+            key for key in ("normalized", "normalization", "presentation", "correlation") if getattr(self, key, None) is None
+        })
+        if getattr(self, "silence", None) is not None:
+            if "dismissed" in event:
+                event["dismissed"] = False
+            if "dismissUntil" in event:
+                event["dismissUntil"] = None
+        return event
 
     def __str__(self) -> str:
         # Convert the model instance to a dictionary
@@ -214,6 +233,9 @@ class AlertDto(BaseModel):
 
     @validator("dismissed", pre=True, always=True)
     def validate_dismissed(cls, dismissed, values):
+        silence = values.get("silence")
+        if silence is not None and silence.silenced:
+            return True
         # normzlize dismissed value
         if isinstance(dismissed, str):
             dismissed = dismissed.lower() == "true"
@@ -229,9 +251,14 @@ class AlertDto(BaseModel):
             return dismissed
 
         # if there's dismissUntil, validate it
-        dismiss_until_datetime = datetime.datetime.strptime(
-            dismiss_until, "%Y-%m-%dT%H:%M:%S.%fZ"
-        ).replace(tzinfo=datetime.timezone.utc)
+        try:
+            dismiss_until_datetime = datetime.datetime.strptime(
+                dismiss_until, "%Y-%m-%dT%H:%M:%S.%fZ"
+            ).replace(tzinfo=datetime.timezone.utc)
+        except ValueError:
+            dismiss_until_datetime = datetime.datetime.strptime(
+                dismiss_until, "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=datetime.timezone.utc)
         dismissed = (
             datetime.datetime.now(datetime.timezone.utc) < dismiss_until_datetime
         )
@@ -344,10 +371,10 @@ class AlertWithIncidentLinkMetadataDto(AlertDto):
     is_created_by_ai: bool = False
 
     @classmethod
-    def from_db_instance(cls, db_alert, db_alert_to_incident):
+    def from_db_instance(cls, db_alert, db_alert_to_incident, event=None):
         return cls(
             is_created_by_ai=db_alert_to_incident.is_created_by_ai,
-            **db_alert.event,
+            **(event if event is not None else db_alert.event),
         )
 
 

@@ -170,7 +170,6 @@ const MenuComponent = React.forwardRef<
             ...props,
             onClick(event: React.MouseEvent<HTMLButtonElement>) {
               props.onClick?.(event);
-              tree?.events.emit("click");
             },
             onFocus(event: React.FocusEvent<HTMLButtonElement>) {
               props.onFocus?.(event);
@@ -255,7 +254,7 @@ const DropdownDropdownMenuItem = React.forwardRef<
       {...props}
       ref={useMergeRefs([item.ref, forwardedRef])}
       type="button"
-      role="DropdownMenuItem"
+      role="menuitem"
       className={clsx(
         "DropdownMenuItem",
         props.variant === "destructive" && "text-red-500",

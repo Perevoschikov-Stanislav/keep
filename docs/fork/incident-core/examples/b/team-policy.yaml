@@ -1,0 +1,31 @@
+version: 1
+visibility: team
+roles:
+  admin:
+  - /roles/admin
+  responder:
+  - /roles/responder
+  viewer:
+  - /roles/viewer
+teams:
+- id: harbor
+  groups:
+  - /teams/harbor
+  zones:
+  - zone-harbor
+  visible_to:
+  - harbor
+- id: lumen
+  groups:
+  - /teams/lumen
+  zones:
+  - zone-lumen
+  visible_to:
+  - lumen
+incident_views:
+- id: harbor
+  name: Harbor
+  cel: team_id == 'harbor'
+- id: lumen
+  name: Lumen
+  cel: team_id == 'lumen'

@@ -34,6 +34,7 @@ from keep.api.models.db.facet import FacetType
 from keep.api.models.db.incident import IncidentStatus
 from keep.api.models.facet import FacetDto, FacetOptionDto, FacetOptionsQueryDto
 from keep.api.models.query import QueryDto, SortOptionsDto
+from keep.identitymanager.team_access import alert_history_visible_clause
 
 logger = logging.getLogger(__name__)
 
@@ -238,9 +239,11 @@ def __build_query_for_filtering(
     fetch_alerts_data=True,
     fetch_incidents=False,
     force_fetch=False,
+    allowed_team_ids: frozenset[str] | None = None,
+    query_properties=None,
 ):
     fetch_incidents = fetch_incidents or (cel and "incident." in cel)
-    cel_to_sql_instance = get_cel_to_sql_provider(properties_metadata)
+    cel_to_sql_instance = get_cel_to_sql_provider(query_properties or properties_metadata)
     sql_filter = None
     involved_fields = []
 
@@ -259,7 +262,7 @@ def __build_query_for_filtering(
 
     sql_query = select(*select_args).select_from(LastAlert)
 
-    if fetch_alerts_data or force_fetch:
+    if fetch_alerts_data or force_fetch or allowed_team_ids is not None:
         sql_query = sql_query.join(
             Alert,
             and_(
@@ -307,6 +310,13 @@ def __build_query_for_filtering(
     sql_query = sql_query.filter(LastAlert.tenant_id == tenant_id).filter(
         LastAlert.timestamp >= get_threeshold_query(tenant_id)
     )
+    if allowed_team_ids is not None:
+        sql_query = sql_query.filter(Alert.team_id.in_(allowed_team_ids))
+        sql_query = sql_query.filter(
+            alert_history_visible_clause(
+                tenant_id, LastAlert.fingerprint, allowed_team_ids
+            )
+        )
     involved_fields = []
 
     if sql_filter:
@@ -318,7 +328,7 @@ def __build_query_for_filtering(
     }
 
 
-def build_total_alerts_query(tenant_id, query: QueryDto):
+def build_total_alerts_query(tenant_id, query: QueryDto, allowed_team_ids=None, query_properties=None):
     fetch_incidents = query.cel and "incident." in query.cel
     fetch_alerts_data = query.cel is not None or query.cel != ""
 
@@ -333,13 +343,15 @@ def build_total_alerts_query(tenant_id, query: QueryDto):
         select_args=[count_funct],
         limit=query.limit,
         fetch_alerts_data=fetch_alerts_data,
+        allowed_team_ids=allowed_team_ids,
+        query_properties=query_properties,
     )
 
     return built_query_result["query"]
 
 
-def build_alerts_query(tenant_id, query: QueryDto):
-    cel_to_sql_instance = get_cel_to_sql_provider(properties_metadata)
+def build_alerts_query(tenant_id, query: QueryDto, allowed_team_ids=None, query_properties=None):
+    cel_to_sql_instance = get_cel_to_sql_provider(query_properties or properties_metadata)
     sort_by_exp = cel_to_sql_instance.get_order_by_expression(
         [
             (sort_option.sort_by, sort_option.sort_dir)
@@ -360,6 +372,8 @@ def build_alerts_query(tenant_id, query: QueryDto):
         ]
         + distinct_columns,
         cel=query.cel,
+        allowed_team_ids=allowed_team_ids,
+        query_properties=query_properties,
     )
     sql_query = built_query_result["query"]
     fetch_incidents = built_query_result["fetch_incidents"]
@@ -377,7 +391,9 @@ def build_alerts_query(tenant_id, query: QueryDto):
     return sql_query
 
 
-def query_last_alerts(tenant_id, query: QueryDto) -> Tuple[list[Alert], int]:
+def query_last_alerts(
+    tenant_id, query: QueryDto, allowed_team_ids: frozenset[str] | None = None
+) -> Tuple[list[Alert], int]:
     query_with_defaults = query.copy()
 
     # Shahar: this happens when the frontend query builder fails to build a query
@@ -401,9 +417,16 @@ def query_last_alerts(tenant_id, query: QueryDto) -> Tuple[list[Alert], int]:
         ]
 
     with Session(engine) as session:
+        from keep.api.core.silences_query import silence_properties
+
+        query_properties = silence_properties(session, tenant_id, alert_field_configurations,
+            [query_with_defaults.cel] + [option.sort_by for option in query_with_defaults.sort_options],
+            allowed_team_ids=allowed_team_ids)
         try:
             total_count_query = build_total_alerts_query(
-                tenant_id=tenant_id, query=query_with_defaults
+                tenant_id=tenant_id, query=query_with_defaults,
+                allowed_team_ids=allowed_team_ids,
+                query_properties=query_properties,
             )
             total_count = session.exec(total_count_query).one()[0]
 
@@ -421,7 +444,7 @@ def query_last_alerts(tenant_id, query: QueryDto) -> Tuple[list[Alert], int]:
                     alerts_hard_limit - query_with_defaults.offset
                 )
 
-            data_query = build_alerts_query(tenant_id, query_with_defaults)
+            data_query = build_alerts_query(tenant_id, query_with_defaults, allowed_team_ids, query_properties)
             alerts_with_start = session.execute(data_query).all()
         except OperationalError as e:
             logger.warning(
@@ -447,11 +470,19 @@ def query_last_alerts(tenant_id, query: QueryDto) -> Tuple[list[Alert], int]:
 def get_alert_facets_data(
     tenant_id: str,
     facet_options_query: FacetOptionsQueryDto,
+    allowed_team_ids: frozenset[str] | None = None,
 ) -> dict[str, list[FacetOptionDto]]:
     if facet_options_query and facet_options_query.facet_queries:
         facets = get_alert_facets(tenant_id, facet_options_query.facet_queries.keys())
     else:
         facets = static_facets
+
+    from keep.api.core.silences_query import silence_properties
+
+    with Session(engine) as session:
+        query_properties = silence_properties(session, tenant_id, alert_field_configurations,
+            [facet.property_path for facet in facets] + [facet_options_query.cel if facet_options_query else None],
+            allowed_team_ids=allowed_team_ids)
 
     def base_query_factory(
         facet_property_path: str,
@@ -467,6 +498,8 @@ def get_alert_facets_data(
             select_args=select_statement,
             force_fetch=False,
             fetch_incidents=fetch_incidents,
+            allowed_team_ids=allowed_team_ids,
+            query_properties=query_properties,
         )["query"]
 
     return get_facet_options(
@@ -474,7 +507,7 @@ def get_alert_facets_data(
         entity_id_column=LastAlert.alert_id,
         facets=facets,
         facet_options_query=facet_options_query,
-        properties_metadata=properties_metadata,
+        properties_metadata=query_properties,
     )
 
 

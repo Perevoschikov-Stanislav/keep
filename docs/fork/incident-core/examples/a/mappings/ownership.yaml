@@ -1,0 +1,10 @@
+name: ownership-a
+priority: 20
+type: csv
+matchers:
+- - labels.owner_team
+rows:
+- labels.owner_team: cedar
+  zone: zone-cedar
+- labels.owner_team: quartz
+  zone: zone-quartz

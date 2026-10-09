@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import SidePanel from "@/components/SidePanel";
 import { showErrorToast } from "@/shared/ui";
 import { useApi } from "@/shared/lib/hooks/useApi";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 
 interface EnrichAlertModalProps {
   alert: AlertDto | null | undefined;
@@ -20,6 +21,8 @@ export const EnrichAlertSidePanel: React.FC<EnrichAlertModalProps> = ({
   mutate,
 }) => {
   const api = useApi();
+  const { can } = useUserPermissions();
+  const canEdit = !!alert && can("update:alert", alert);
 
   const [customFields, setCustomFields] = useState<
     { key: string; value: string }[]
@@ -166,6 +169,7 @@ export const EnrichAlertSidePanel: React.FC<EnrichAlertModalProps> = ({
     <SidePanel isOpen={isOpen} onClose={handleClose} panelWidth={"w-1/3"}>
       <div className="flex justify-between items-center min-w-full">
         <h2 className="text-lg font-semibold">Enrich Alert</h2>
+        {!canEdit && <p>Read only: changes are not allowed for your role or team</p>}
       </div>
 
       <div className="flex-1 overflow-auto pb-6 mt-4">
@@ -175,6 +179,7 @@ export const EnrichAlertSidePanel: React.FC<EnrichAlertModalProps> = ({
       <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white flex justify-end gap-2">
         <Button
           onClick={addCustomField}
+          disabled={!canEdit}
           className="bg-orange-500"
           variant="primary"
         >
@@ -184,7 +189,7 @@ export const EnrichAlertSidePanel: React.FC<EnrichAlertModalProps> = ({
           onClick={handleSave}
           color="orange"
           variant="primary"
-          disabled={!isDataValid}
+          disabled={!isDataValid || !canEdit}
         >
           Save
         </Button>

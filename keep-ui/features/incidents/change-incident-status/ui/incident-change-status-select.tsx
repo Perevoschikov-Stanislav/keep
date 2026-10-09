@@ -5,6 +5,8 @@ import Select, { ClassNamesConfig } from "react-select";
 import { useIncidentActions } from "@/entities/incidents/model";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { capitalize } from "@/utils/helpers";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
+import { showErrorToast } from "@/shared/ui";
 
 const customClassNames: ClassNamesConfig<any, false, any> = {
   container: () => "inline-flex",
@@ -28,14 +30,18 @@ const customClassNames: ClassNamesConfig<any, false, any> = {
 
 type Props = {
   incidentId: string;
+  teamId?: string | null;
   value: Status;
+  expectedRevision?: number;
   onChange?: (status: Status) => void;
   className?: string;
 };
 
 export function IncidentChangeStatusSelect({
   incidentId,
+  teamId,
   value,
+  expectedRevision,
   onChange,
   className,
 }: Props) {
@@ -47,10 +53,13 @@ export function IncidentChangeStatusSelect({
   }, []);
 
   const { changeStatus } = useIncidentActions();
+  const { can } = useUserPermissions();
+  const canChange = can("update:incident", { team_id: teamId });
+  const canDelete = can("delete:incident", { team_id: teamId });
   const statusOptions = useMemo(
     () =>
       Object.values(Status)
-        .filter((status) => status != Status.Deleted || value == Status.Deleted)
+        .filter((status) => canDelete || ![Status.Deleted, Status.Merged].includes(status) || status === value)
         .map((status) => ({
           value: status,
           label: (
@@ -60,20 +69,24 @@ export function IncidentChangeStatusSelect({
             </div>
           ),
         })),
-    [value]
+    [value, canDelete]
   );
 
   const handleChange = useCallback(
     (option: any) => {
+      if (!canChange) return;
       const _asyncUpdate = async (option: any) => {
         setIsDisabled(true);
-        await changeStatus(incidentId, option?.value || null);
-        onChange?.(option?.value || null);
-        setIsDisabled(false);
+        try {
+          await changeStatus(incidentId, option?.value || null, undefined, expectedRevision);
+          onChange?.(option?.value || null);
+        } finally {
+          setIsDisabled(false);
+        }
       };
-      _asyncUpdate(option);
+      _asyncUpdate(option).catch((error) => showErrorToast(error));
     },
-    [incidentId, changeStatus, onChange]
+    [incidentId, changeStatus, onChange, canChange, expectedRevision]
   );
 
   const selectedOption = useMemo(
@@ -82,18 +95,22 @@ export function IncidentChangeStatusSelect({
   );
 
   return (
+    <span title={!canChange ? "Read only: changes are not allowed for your role or team" : undefined}>
     <Select
+      aria-label="Incident status"
       instanceId={`incident-status-select-${incidentId}`}
       className={className}
       isSearchable={false}
       options={statusOptions}
       value={selectedOption}
       onChange={handleChange}
-      isDisabled={isDisabled}
+      isDisabled={isDisabled || !canChange}
+      menuIsOpen={!canChange ? false : undefined}
       placeholder="Status"
       classNames={customClassNames}
       menuPortalTarget={menuPortalTarget.current}
       menuPosition="fixed"
     />
+    </span>
   );
 }

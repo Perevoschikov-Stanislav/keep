@@ -1,0 +1,19 @@
+ruleName: storage-host
+sqlQuery:
+  sql: family == "storage" && has(labels.instance) && !alertname.startsWith("Longhorn")
+    && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+  params: {}
+celQuery: family == "storage" && has(labels.instance) && !alertname.startsWith("Longhorn")
+  && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- instance
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · host {{ alert.instance }}: {{ alert.alertname
+  }}'
+requireApprove: false
+threshold: 1

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import {
   GlobeAltIcon,
@@ -22,6 +22,7 @@ import { EmptyStateTable } from "@/components/ui/EmptyStateTable";
 import { EmptyStateImage } from "@/components/ui/EmptyStateImage";
 import UsersTab from "./auth/users-tab";
 import GroupsTab from "./auth/groups-tab";
+import TeamsTab from "./auth/teams-tab";
 import RolesTab from "./auth/roles-tab";
 import APIKeysTab from "./auth/api-key-tab";
 import SSOTab from "./auth/sso-tab";
@@ -36,6 +37,16 @@ import { RolesTable } from "./auth/roles-table";
 import { APIKeysTable } from "./auth/api-key-table";
 import { User } from "@/app/(keep)/settings/models";
 import ProviderImagesSettings from "./provider-images/provider-images-settings";
+
+const allUserTabs = [
+  { key: "users", label: "Users", icon: UsersIcon },
+  { key: "groups", label: "Groups", icon: UserGroupIcon, enterprise: true },
+  { key: "teams", label: "Teams", icon: UserGroupIcon },
+  { key: "roles", label: "Roles", icon: ShieldCheckIcon },
+  { key: "permissions", label: "Permissions", icon: LockClosedIcon, enterprise: true },
+  { key: "api-keys", label: "API Keys", icon: KeyIcon },
+  { key: "sso", label: "SSO", icon: MdOutlineSecurity, enterprise: true },
+];
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -55,6 +66,7 @@ export default function SettingsPage() {
   const [userSubTabIndex, setUserSubTabIndex] = useState<number>(0);
 
   const authType = configData?.AUTH_TYPE as AuthType;
+  const ossOnly = configData?.KEEP_OSS_ONLY ?? true;
   const docsUrl = configData?.KEEP_DOCS_URL || "https://docs.keephq.dev";
 
   // future: feature flags
@@ -67,7 +79,11 @@ export default function SettingsPage() {
   const ssoAllowed = authType === AuthType.KEYCLOAK;
   const groupsAllowed = authType === AuthType.KEYCLOAK;
   const permissionsAllowed = authType === AuthType.KEYCLOAK;
-  const apiKeysAllowed = true; // Assuming API keys are always allowed
+  const apiKeysAllowed = true;
+  const activeUserTabs = useMemo(
+    () => allUserTabs.filter((tab) => !ossOnly || !tab.enterprise),
+    [ossOnly]
+  );
 
   useEffect(() => {
     const newSelectedTab = searchParams?.get("selectedTab") || "users";
@@ -82,25 +98,13 @@ export default function SettingsPage() {
         : newSelectedTab === "provider-images"
         ? 3
         : 0;
-    const userSubTabIndex =
-      newUserSubTab === "users"
-        ? 0
-        : newUserSubTab === "groups"
-        ? 1
-        : newUserSubTab === "roles"
-        ? 2
-        : newUserSubTab === "permissions"
-        ? 3
-        : newUserSubTab === "api-keys"
-        ? 4
-        : newUserSubTab === "sso"
-        ? 5
-        : 0;
+    const userTabs = activeUserTabs.map((tab) => tab.key);
+    const userSubTabIndex = Math.max(0, userTabs.indexOf(newUserSubTab));
     setTabIndex(tabIndex);
     setUserSubTabIndex(userSubTabIndex);
     setSelectedTab(newSelectedTab);
-    setSelectedUserSubTab(newUserSubTab);
-  }, [searchParams]);
+    setSelectedUserSubTab(userTabs[userSubTabIndex]);
+  }, [searchParams, ossOnly, activeUserTabs]);
 
   const handleTabChange = (tab: string) => {
     router.replace(`${pathname}?selectedTab=${tab}`);
@@ -231,6 +235,8 @@ export default function SettingsPage() {
             </EmptyStateTable>
           );
         }
+      case "teams":
+        return <TeamsTab />;
       case "roles":
         if (rolesAllowed) {
           return <RolesTab customRolesAllowed={customRolesAllowed} />;
@@ -392,62 +398,22 @@ export default function SettingsPage() {
               className="h-full flex flex-col gap-4"
             >
               <TabList>
-                <Tab
-                  icon={UsersIcon}
-                  onClick={() => handleUserSubTabChange("users")}
-                >
-                  Users
-                </Tab>
-                <Tab
-                  icon={UserGroupIcon}
-                  onClick={() => handleUserSubTabChange("groups")}
-                >
-                  Groups
-                </Tab>
-                <Tab
-                  icon={ShieldCheckIcon}
-                  onClick={() => handleUserSubTabChange("roles")}
-                >
-                  Roles
-                </Tab>
-                <Tab
-                  icon={LockClosedIcon}
-                  onClick={() => handleUserSubTabChange("permissions")}
-                >
-                  Permissions
-                </Tab>
-                <Tab
-                  icon={KeyIcon}
-                  onClick={() => handleUserSubTabChange("api-keys")}
-                >
-                  API Keys
-                </Tab>
-                <Tab
-                  icon={MdOutlineSecurity}
-                  onClick={() => handleUserSubTabChange("sso")}
-                >
-                  SSO
-                </Tab>
+                {activeUserTabs.map((tab) => (
+                  <Tab
+                    key={tab.key}
+                    icon={tab.icon}
+                    onClick={() => handleUserSubTabChange(tab.key)}
+                  >
+                    {tab.label}
+                  </Tab>
+                ))}
               </TabList>
               <TabPanels className="flex-grow overflow-hidden p-px">
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("users")}
-                </TabPanel>
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("groups")}
-                </TabPanel>
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("roles")}
-                </TabPanel>
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("permissions")}
-                </TabPanel>
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("api-keys")}
-                </TabPanel>
-                <TabPanel className="h-full">
-                  {renderUserSubTabContent("sso")}
-                </TabPanel>
+                {activeUserTabs.map((tab) => (
+                  <TabPanel key={tab.key} className="h-full">
+                    {renderUserSubTabContent(tab.key)}
+                  </TabPanel>
+                ))}
               </TabPanels>
             </TabGroup>
           </TabPanel>

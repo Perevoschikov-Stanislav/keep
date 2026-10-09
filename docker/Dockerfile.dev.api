@@ -18,13 +18,15 @@ COPY pyproject.toml ./
 RUN . /venv/bin/activate && poetry install --no-root
 
 COPY keep keep
-COPY ee keep/ee
 
 # Setting the virtual environment path
 ENV PYTHONPATH="/app:${PYTHONPATH}"
 ENV PATH="/venv/bin:${PATH}"
 ENV VIRTUAL_ENV="/venv"
-ENV POSTHOG_DISABLED="true"
+ENV EE_ENABLED="false" \
+    POSTHOG_DISABLED="true" \
+    SENTRY_DISABLED="true" \
+    KEEP_OSS_ONLY="true"
 
 ENTRYPOINT ["/app/keep/entrypoint.sh"]
 

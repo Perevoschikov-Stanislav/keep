@@ -1,5 +1,8 @@
 // TODO: refactor, move to entities
 import { AlertDto } from "@/entities/alerts/model";
+import { SilenceMetadata } from "@/entities/silences/model";
+import type { EventPresentation, NormalizedFields } from "@/shared/lib/event-presentation";
+import type { IncidentCorrelation, IncidentLifecycle, IncidentAutomation } from "@/shared/lib/incident-correlation";
 
 export enum Status {
   Firing = "firing",
@@ -44,8 +47,16 @@ export const INCIDENT_PAGINATION_OPTIONS = [
 
 export interface IncidentDto {
   id: string;
+  team_id?: string | null;
   user_generated_name: string;
   ai_generated_name: string;
+  generated_name?: string | null;
+  normalized?: NormalizedFields | null;
+  correlation?: IncidentCorrelation | null;
+  lifecycle?: IncidentLifecycle | null;
+  automation?: IncidentAutomation | null;
+  normalization?: Record<string, unknown> | null;
+  presentation?: EventPresentation | null;
   user_summary: string;
   generated_summary: string;
   assignee: string;
@@ -73,6 +84,7 @@ export interface IncidentDto {
   rule_id?: string;
   rule_name?: string;
   rule_is_deleted?: boolean;
+  silence?: SilenceMetadata | null;
 }
 
 export interface IncidentCandidateDto {

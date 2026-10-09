@@ -1,0 +1,26 @@
+# Mount the IaC-owned policy and set KEEP_TEAMS_CONFIG_FILE to its path.
+# Keycloak group paths below are examples; team IDs and zones are data, not code.
+version: 1
+# team: restrict reading by visible_to; all: every mapped role can read all teams.
+# Writes always require membership in the owning team; admin is unrestricted.
+visibility: team
+incident_views:
+  - id: operations
+    name: Operations
+    cel: team_id == 'example-operations'
+  - id: internal
+    name: Internal
+    cel: team_id == 'example-internal'
+roles:
+  admin: [/keep-roles/admin]
+  responder: [/keep-roles/responder]
+  viewer: [/keep-roles/viewer]
+teams:
+  - id: example-operations
+    groups: [/keep-teams/operations]
+    zones: [EXAMPLE_OPERATIONS]
+    visible_to: [example-operations]
+  - id: example-internal
+    groups: [/keep-teams/internal]
+    zones: [EXAMPLE_INTERNAL]
+    visible_to: [example-internal]

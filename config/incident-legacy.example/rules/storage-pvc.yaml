@@ -1,0 +1,20 @@
+ruleName: storage-pvc
+sqlQuery:
+  sql: family == "storage" && has(labels.persistentvolumeclaim) && has(labels.namespace)
+    && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request") && has(labels.node))
+  params: {}
+celQuery: family == "storage" && has(labels.persistentvolumeclaim) && has(labels.namespace)
+  && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request") && has(labels.node))
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- namespace
+- svc
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · {{ alert.namespace }} · {{ alert.svc
+  }}: {{ alert.alertname }}'
+requireApprove: false
+threshold: 1

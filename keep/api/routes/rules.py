@@ -10,6 +10,9 @@ from keep.api.core.db import get_rule_distribution as get_rule_distribution_db
 from keep.api.core.db import get_rule_incidents_count_db
 from keep.api.core.db import get_rules as get_rules_db
 from keep.api.core.db import update_rule as update_rule_db
+from keep.api.core import db
+from keep.api.core.incident_configuration import managed_metadata
+from sqlmodel import Session
 from keep.api.models.db.rule import CreateIncidentOn, ResolveOn
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
@@ -56,12 +59,12 @@ def get_rules(
     logger.info("Got rules")
     # return rules
     rules = [rule.model_dump() for rule in rules]
-    for rule in rules:
-        rule["distribution"] = rules_dist.get(rule["id"], [])
-        rule["incidents"] = rules_incidents.get(rule["id"], 0)
-        rule["definition_cel_ast"] = CelToAstConverter().convert_to_ast(
-            rule["definition_cel"]
-        )
+    with Session(db.engine) as session:
+        for rule in rules:
+            rule["distribution"] = rules_dist.get(rule["id"], [])
+            rule["incidents"] = rules_incidents.get(rule["id"], 0)
+            rule["definition_cel_ast"] = CelToAstConverter().convert_to_ast(rule["definition_cel"])
+            rule["iac"] = managed_metadata(session, tenant_id, "rules", rule["id"])
 
     return rules
 

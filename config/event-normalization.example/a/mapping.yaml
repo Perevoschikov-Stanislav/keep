@@ -1,0 +1,9 @@
+name: Configured component ownership
+priority: 10
+matchers:
+- - service
+rows:
+- service: example-0
+  zone: platform-blue-zone
+- service: example-1
+  zone: database-green-zone

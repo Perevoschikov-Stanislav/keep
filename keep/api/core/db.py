@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from dateutil.parser import parse
 from dateutil.tz import tz
 from dotenv import find_dotenv, load_dotenv
+from fastapi import HTTPException
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from psycopg2.errors import NoActiveSqlTransaction
 from retry import retry
@@ -55,6 +56,13 @@ from keep.api.core.db_utils import (
     get_or_create,
 )
 from keep.api.core.dependencies import SINGLE_TENANT_UUID
+from keep.api.core.incident_configuration import configured_resources, require_unmanaged
+from keep.identitymanager.team_policy import get_team_policy
+from keep.identitymanager.team_access import (
+    alert_history_visible_clause,
+    incident_history_visible_clause,
+)
+from keep.api.utils.alert_utils import extract_service_from_alert
 
 # This import is required to create the tables
 from keep.api.models.action_type import ActionType
@@ -70,12 +78,16 @@ from keep.api.models.db.dashboard import *  # pylint: disable=unused-wildcard-im
 from keep.api.models.db.enrichment_event import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.extraction import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.incident import *  # pylint: disable=unused-wildcard-import
+from keep.api.models.db.incident_configuration import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.maintenance_window import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.mapping import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.preset import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.provider import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.provider_image import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.rule import *  # pylint: disable=unused-wildcard-import
+from keep.api.models.db.silence import *  # pylint: disable=unused-wildcard-import
+from keep.api.models.db.incident_correlation import IncidentCorrelationGroup
+from keep.api.models.db.incident_migration import LegacyIncidentImport
 from keep.api.models.db.system import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.tenant import *  # pylint: disable=unused-wildcard-import
 from keep.api.models.db.topology import *  # pylint: disable=unused-wildcard-import
@@ -269,7 +281,8 @@ def get_mapping_rule_by_id(
         query = select(MappingRule).where(
             MappingRule.tenant_id == tenant_id, MappingRule.id == rule_id
         )
-        return session.exec(query).first()
+        rows = configured_resources(session, tenant_id, "mappings", MappingRule, session.exec(query).all())
+        return next((row for row in rows if str(row.id) == str(rule_id)), None)
 
 
 def get_extraction_rule_by_id(
@@ -279,7 +292,8 @@ def get_extraction_rule_by_id(
         query = select(ExtractionRule).where(
             ExtractionRule.tenant_id == tenant_id, ExtractionRule.id == rule_id
         )
-        return session.exec(query).first()
+        rows = configured_resources(session, tenant_id, "extraction", ExtractionRule, session.exec(query).all())
+        return next((row for row in rows if str(row.id) == str(rule_id)), None)
 
 
 def get_last_completed_execution(
@@ -355,6 +369,7 @@ def get_workflows_that_should_run():
                             "tenant_id": workflow.tenant_id,
                             "workflow_id": workflow.id,
                             "workflow_execution_id": workflow_execution_id,
+                            "workflow_revision": workflow.revision,
                         }
                     )
                 # some other thread/instance has already started to work on it
@@ -381,6 +396,7 @@ def get_workflows_that_should_run():
                             "tenant_id": workflow.tenant_id,
                             "workflow_id": workflow.id,
                             "workflow_execution_id": workflow_execution_id,
+                            "workflow_revision": workflow.revision,
                         }
                     )
                     # continue to the next one
@@ -499,6 +515,9 @@ def update_workflow_with_values(
     name = name or existing_workflow.name
     with existed_or_new_session(session) as session:
         # Get the latest revision number for this workflow
+        session.exec(select(Workflow).where(Workflow.id == existing_workflow.id,
+                                            Workflow.tenant_id == existing_workflow.tenant_id).with_for_update()).first()
+        require_unmanaged(session, existing_workflow.tenant_id, "workflows", existing_workflow.id)
         latest_version = session.exec(
             select(WorkflowVersion)
             .where(col(WorkflowVersion.workflow_id) == existing_workflow.id)
@@ -829,7 +848,9 @@ def get_all_workflows(tenant_id: str, exclude_disabled: bool = False) -> List[Wo
         if exclude_disabled:
             query = query.where(Workflow.is_disabled == False)
 
-        workflows = session.exec(query).all()
+        workflows = configured_resources(session, tenant_id, "workflows", Workflow, session.exec(query).all())
+        if exclude_disabled:
+            workflows = [workflow for workflow in workflows if not workflow.is_disabled]
     return workflows
 
 
@@ -880,13 +901,15 @@ def get_workflow_by_name(tenant_id: str, workflow_name: str):
 
 def get_workflow_by_id(tenant_id: str, workflow_id: str):
     with Session(engine) as session:
-        workflow = session.exec(
+        workflows = session.exec(
             select(Workflow)
             .where(Workflow.tenant_id == tenant_id)
             .where(Workflow.id == workflow_id)
             .where(Workflow.is_deleted == False)
             .where(Workflow.is_test == False)
-        ).first()
+        ).all()
+        workflow = next((row for row in configured_resources(session, tenant_id, "workflows", Workflow, workflows)
+                         if str(row.id) == str(workflow_id)), None)
     return workflow
 
 
@@ -1090,9 +1113,11 @@ def delete_workflow(tenant_id, workflow_id):
             select(Workflow)
             .where(Workflow.tenant_id == tenant_id)
             .where(Workflow.id == workflow_id)
+            .with_for_update()
         ).first()
 
         if workflow:
+            require_unmanaged(session, tenant_id, "workflows", workflow.id)
             workflow.is_deleted = True
             session.commit()
 
@@ -1103,9 +1128,11 @@ def delete_workflow_by_provisioned_file(tenant_id, provisioned_file):
             select(Workflow)
             .where(Workflow.tenant_id == tenant_id)
             .where(Workflow.provisioned_file == provisioned_file)
+            .with_for_update()
         ).first()
 
         if workflow:
+            require_unmanaged(session, tenant_id, "workflows", workflow.id)
             workflow.is_deleted = True
             session.commit()
 
@@ -1369,6 +1396,7 @@ def batch_enrich(
     action_description: str,
     session=None,
     audit_enabled=True,
+    commit=True,
 ):
     """
     Batch enrich multiple alerts with the same enrichments in a single transaction.
@@ -1445,7 +1473,10 @@ def batch_enrich(
         if audit_entries:
             session.add_all(audit_entries)
 
-        session.commit()
+        if commit:
+            session.commit()
+        else:
+            session.flush()
 
         # Get all updated/created enrichments
         result = session.exec(
@@ -1764,6 +1795,7 @@ def get_last_alerts(
     lower_timestamp=None,
     with_incidents=False,
     fingerprints=None,
+    allowed_team_ids: frozenset[str] | None = None,
 ) -> list[Alert]:
 
     with Session(engine) as session:
@@ -1777,6 +1809,13 @@ def get_last_alerts(
             .where(LastAlert.tenant_id == tenant_id)
             .where(Alert.tenant_id == tenant_id)
         )
+        if allowed_team_ids is not None:
+            stmt = stmt.where(Alert.team_id.in_(allowed_team_ids))
+            stmt = stmt.where(
+                alert_history_visible_clause(
+                    tenant_id, LastAlert.fingerprint, allowed_team_ids
+                )
+            )
 
         if timeframe:
             stmt = stmt.where(
@@ -2304,9 +2343,11 @@ def update_rule(
     with Session(engine) as session:
         rule = session.exec(
             select(Rule).where(Rule.tenant_id == tenant_id).where(Rule.id == rule_uuid)
+            .with_for_update()
         ).first()
 
         if rule:
+            require_unmanaged(session, tenant_id, "rules", rule.id)
             rule.name = name
             rule.timeframe = timeframe
             rule.timeunit = timeunit
@@ -2345,7 +2386,10 @@ def get_rules(tenant_id, ids=None) -> list[Rule]:
             query = query.where(Rule.id.in_(ids))
 
         # Execute the query
-        rules = session.exec(query).all()
+        rules = configured_resources(session, tenant_id, "rules", Rule, session.exec(query).all())
+        if ids is not None:
+            wanted = {str(rule_id) for rule_id in ids}
+            rules = [rule for rule in rules if str(rule.id) in wanted]
         return rules
 
 
@@ -2372,9 +2416,11 @@ def delete_rule(tenant_id, rule_id):
 
         rule = session.exec(
             select(Rule).where(Rule.tenant_id == tenant_id).where(Rule.id == rule_uuid)
+            .with_for_update()
         ).first()
 
         if rule and not rule.is_deleted:
+            require_unmanaged(session, tenant_id, "rules", rule.id)
             rule.is_deleted = True
             session.commit()
             return True
@@ -2382,18 +2428,22 @@ def delete_rule(tenant_id, rule_id):
 
 
 def get_incident_for_grouping_rule(
-    tenant_id, rule, rule_fingerprint, session: Optional[Session] = None
+    tenant_id, rule, rule_fingerprint, session: Optional[Session] = None,
+    team_id: str | None = None,
 ) -> (Optional[Incident], bool):
     # checks if incident with the incident criteria exists, if not it creates it
     #   and then assign the alert to the incident
     with existed_or_new_session(session) as session:
-        incident = session.exec(
+        query = (
             select(Incident)
             .where(Incident.tenant_id == tenant_id)
             .where(Incident.rule_id == rule.id)
             .where(Incident.rule_fingerprint == rule_fingerprint)
             .order_by(Incident.creation_time.desc())
-        ).first()
+        )
+        if get_team_policy():
+            query = query.where(Incident.team_id == team_id)
+        incident = session.exec(query).first()
 
         # if the last alert in the incident is older than the timeframe, create a new incident
         is_incident_expired = False
@@ -2424,14 +2474,17 @@ def create_incident_for_grouping_rule(
     incident_name: str = None,
     past_incident: Optional[Incident] = None,
     assignee: str | None = None,
+    team_id: str | None = None,
     session: Optional[Session] = None,
+    commit: bool = True,
 ):
 
     with existed_or_new_session(session) as session:
         # Create and add a new incident if it doesn't exist
         incident = Incident(
             tenant_id=tenant_id,
-            user_generated_name=incident_name or f"{rule.name}",
+            team_id=team_id,
+            generated_name=incident_name or f"{rule.name}",
             rule_id=rule.id,
             rule_fingerprint=rule_fingerprint,
             is_predicted=True,
@@ -2445,9 +2498,10 @@ def create_incident_for_grouping_rule(
         session.add(incident)
         session.flush()
         if rule.incident_prefix:
-            incident.user_generated_name = f"{rule.incident_prefix}-{incident.running_number} - {incident.user_generated_name}"
-        session.commit()
-        session.refresh(incident)
+            incident.generated_name = f"{rule.incident_prefix}-{incident.running_number} - {incident.generated_name}"
+        if commit:
+            session.commit()
+            session.refresh(incident)
     return incident
 
 
@@ -2462,12 +2516,14 @@ def create_incident_for_topology(
     # Get all services
     services = set()
     service_names = set()
+    teams = {alert.team_id for alert in alert_group}
     for alert in alert_group:
         services.update(alert.service_ids)
         service_names.update(alert.service_names)
 
     incident = Incident(
         tenant_id=tenant_id,
+        team_id=next(iter(teams)) if len(teams) == 1 else None,
         user_generated_name=f"Topology incident: Multiple alerts across {', '.join(service_names)}",
         severity=severity.value,
         status=IncidentStatus.FIRING.value,
@@ -2925,17 +2981,24 @@ def update_key_last_used(
                     raise
 
 
-def get_linked_providers(tenant_id: str) -> List[Tuple[str, str, datetime]]:
+def get_linked_providers(
+    tenant_id: str, allowed_team_ids: frozenset[str] | None = None
+) -> List[Tuple[str, str, datetime]]:
     # Alert table may be too huge, so cutting the query without mercy
     LIMIT_BY_ALERTS = 10000
 
     with Session(engine) as session:
-        alerts_subquery = (
-            select(Alert)
-            .filter(Alert.tenant_id == tenant_id, Alert.provider_type != "group")
-            .limit(LIMIT_BY_ALERTS)
-            .subquery()
+        alerts_query = select(Alert).filter(
+            Alert.tenant_id == tenant_id, Alert.provider_type != "group"
         )
+        if allowed_team_ids is not None:
+            alerts_query = alerts_query.filter(Alert.team_id.in_(allowed_team_ids))
+            alerts_query = alerts_query.filter(
+                alert_history_visible_clause(
+                    tenant_id, Alert.fingerprint, allowed_team_ids
+                )
+            )
+        alerts_subquery = alerts_query.limit(LIMIT_BY_ALERTS).subquery()
 
         providers = session.exec(
             select(
@@ -3672,7 +3735,9 @@ def get_alert_audit(
     return result
 
 
-def get_incidents_meta_for_tenant(tenant_id: str) -> dict:
+def get_incidents_meta_for_tenant(
+    tenant_id: str, allowed_team_ids: frozenset[str] | None = None
+) -> dict:
     with Session(engine) as session:
 
         if session.bind.dialect.name == "sqlite":
@@ -3701,6 +3766,13 @@ def get_incidents_meta_for_tenant(tenant_id: str) -> dict:
                 )
                 .filter(Incident.tenant_id == tenant_id, Incident.is_visible == True)
             )
+            if allowed_team_ids is not None:
+                query = query.filter(Incident.team_id.in_(allowed_team_ids))
+                query = query.filter(
+                    incident_history_visible_clause(
+                        tenant_id, Incident.id, Incident.team_id
+                    )
+                )
             results = session.exec(query).one_or_none()
 
             if not results:
@@ -3739,6 +3811,13 @@ def get_incidents_meta_for_tenant(tenant_id: str) -> dict:
                 .filter(Incident.tenant_id == tenant_id, Incident.is_visible == True)
             )
 
+            if allowed_team_ids is not None:
+                query = query.filter(Incident.team_id.in_(allowed_team_ids))
+                query = query.filter(
+                    incident_history_visible_clause(
+                        tenant_id, Incident.id, Incident.team_id
+                    )
+                )
             results = session.exec(query).one_or_none()
 
             if not results:
@@ -3778,6 +3857,13 @@ def get_incidents_meta_for_tenant(tenant_id: str) -> dict:
                 .filter(Incident.tenant_id == tenant_id, Incident.is_visible == True)
             )
 
+            if allowed_team_ids is not None:
+                query = query.filter(Incident.team_id.in_(allowed_team_ids))
+                query = query.filter(
+                    incident_history_visible_clause(
+                        tenant_id, Incident.id, Incident.team_id
+                    )
+                )
             results = session.exec(query).one_or_none()
             if not results:
                 return {}
@@ -3873,10 +3959,11 @@ def enrich_incidents_with_alerts(
 
 
 def enrich_alerts_with_incidents(
-    tenant_id: str, alerts: List[Alert], session: Optional[Session] = None
+    tenant_id: str, alerts: List[Alert], session: Optional[Session] = None,
+    allowed_team_ids: frozenset[str] | None = None,
 ):
     with existed_or_new_session(session) as session:
-        alert_incidents = session.exec(
+        query = (
             select(LastAlertToIncident.fingerprint, Incident)
             .select_from(LastAlert)
             .join(
@@ -3894,7 +3981,13 @@ def enrich_alerts_with_incidents(
                     [alert.fingerprint for alert in alerts]
                 ),
             )
-        ).all()
+        )
+        if allowed_team_ids is not None:
+            query = query.where(Incident.team_id.in_(allowed_team_ids))
+            query = query.where(
+                incident_history_visible_clause(tenant_id, Incident.id, Incident.team_id)
+            )
+        alert_incidents = session.exec(query).all()
 
         incidents_per_alert = defaultdict(list)
         for fingerprint, incident in alert_incidents:
@@ -4107,6 +4200,9 @@ def create_incident_from_dto(
     if incident_dto.severity is not None:
         incident_dict["severity"] = incident_dto.severity.order
 
+    for key in ("generated_name", "normalization_context", "normalized", "normalization", "presentation", "correlation", "correlation_context", "lifecycle", "lifecycle_context", "automation", "automation_context", "notification_context"):
+        incident_dict.pop(key, None)
+
     return create_incident_from_dict(tenant_id, incident_dict, session)
 
 
@@ -4131,17 +4227,20 @@ def update_incident_from_dto_by_id(
     incident_id: str | UUID,
     updated_incident_dto: IncidentDtoIn | IncidentDto,
     generated_by_ai: bool = False,
+    authenticated_entity=None,
 ) -> Optional[Incident]:
     if isinstance(incident_id, str):
         incident_id = __convert_to_uuid(incident_id)
 
-    with Session(engine) as session:
-        incident = session.exec(
-            select(Incident).where(
-                Incident.tenant_id == tenant_id,
-                Incident.id == incident_id,
-            )
-        ).first()
+    from keep.api.core.incident_configuration import configuration_scope
+    from keep.api.core import incident_lifecycle as life
+    with configuration_scope(tenant_id), Session(engine) as session:
+        try:
+            incident, group = life.lock_incident(session, tenant_id, incident_id, authenticated_entity)
+        except HTTPException as error:
+            if error.status_code == 404 and authenticated_entity is None:
+                return None
+            raise
 
         if not incident:
             return None
@@ -4153,7 +4252,21 @@ def update_incident_from_dto_by_id(
             # When a user updates an Incident
             updated_data = updated_incident_dto.dict()
 
+        status = updated_data.pop("status", None)
+        if status is not None:
+            if not isinstance(updated_incident_dto, IncidentDto):
+                raise HTTPException(400, "Use the incident status endpoint")
+            life.transition(session, incident, status, at=datetime.utcnow(), reason="provider incident update", group=group)
+
+        previous_team_id = incident.team_id
+        if incident.correlation_context and "resolve_on" in updated_data and updated_data["resolve_on"] != incident.resolve_on:
+            raise HTTPException(status_code=409, detail="Incident resolve policy is managed by IaC")
         for key, value in updated_data.items():
+            if key in {"generated_name", "normalization_context", "normalized", "normalization", "presentation", "correlation", "correlation_context", "lifecycle", "lifecycle_context", "automation", "automation_context", "notification_context"}:
+                continue
+            if key == "assignee" and authenticated_entity is not None and value is not None:
+                life.assign(session, incident, value or None, authenticated_entity, at=datetime.utcnow())
+                continue
             # Update only if the new value is different from the current one
             if hasattr(incident, key) and getattr(incident, key) != value:
                 if isinstance(value, Enum):
@@ -4169,8 +4282,12 @@ def update_incident_from_dto_by_id(
 
         if generated_by_ai:
             incident.generated_summary = updated_incident_dto.user_summary
-        else:
+        elif "user_summary" in updated_incident_dto.__fields_set__:
             incident.user_summary = updated_incident_dto.user_summary
+
+        if previous_team_id != incident.team_id:
+            from keep.api.core.event_normalization import refresh_incident_presentation
+            refresh_incident_presentation(tenant_id, incident, session)
 
         session.commit()
         session.refresh(incident)
@@ -4287,20 +4404,26 @@ def get_future_incidents_by_incident_id(
     incident_id: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
+    tenant_id: str | None = None,
+    allowed_team_ids: frozenset[str] | None = None,
 ) -> tuple[List[Incident], int]:
     with Session(engine) as session:
         query = session.query(
             Incident,
         ).filter(Incident.same_incident_in_the_past_id == incident_id)
-
+        if tenant_id is not None:
+            query = query.filter(Incident.tenant_id == tenant_id)
+        if allowed_team_ids is not None:
+            query = query.filter(Incident.team_id.in_(allowed_team_ids))
+            query = query.filter(
+                incident_history_visible_clause(tenant_id, Incident.id, Incident.team_id)
+            )
+        total_count = query.count()
         if limit:
             query = query.limit(limit)
         if offset:
             query = query.offset(offset)
-
-    total_count = query.count()
-
-    return query.all(), total_count
+        return query.all(), total_count
 
 
 def get_int_severity(input_severity: int | str) -> int:
@@ -4329,7 +4452,7 @@ def get_alerts_data_for_incident(
     with existed_or_new_session(session) as session:
 
         fields = (
-            get_json_extract_field(session, Alert.event, "service"),
+            Alert.event,
             Alert.provider_type,
             Alert.fingerprint,
             get_json_extract_field(session, Alert.event, "severity"),
@@ -4355,11 +4478,13 @@ def get_alerts_data_for_incident(
         services = []
         severities = []
 
-        for service, source, fingerprint, severity in alerts_data:
+        for alert_event, source, fingerprint, severity in alerts_data:
             if source:
                 sources.append(source)
-            if service:
-                services.append(service)
+            if alert_event:
+                resolved_service = extract_service_from_alert(alert_event)
+                if resolved_service:
+                    services.append(resolved_service)
             if severity:
                 if isinstance(severity, int):
                     severities.append(IncidentSeverity.from_number(severity))
@@ -4441,7 +4566,22 @@ def add_alerts_to_incident(
                 new_fingerprints = new_fingerprints - unlinked_alerts
 
             if not new_fingerprints:
+                from keep.api.core.event_normalization import refresh_incident_presentation
+                refresh_incident_presentation(tenant_id, incident, session)
+                session.commit()
                 return incident
+
+            if get_team_policy():
+                alert_team_rows = session.exec(
+                    select(Alert.fingerprint, Alert.team_id)
+                    .where(Alert.tenant_id == tenant_id)
+                    .where(col(Alert.fingerprint).in_(new_fingerprints))
+                    .distinct()
+                ).all()
+                if {fingerprint for fingerprint, _ in alert_team_rows} != new_fingerprints or any(
+                    team_id != incident.team_id for _, team_id in alert_team_rows
+                ):
+                    raise HTTPException(status_code=409, detail="Incident and alert teams differ")
 
             alert_to_incident_entries = [
                 LastAlertToIncident(
@@ -4560,7 +4700,9 @@ def add_alerts_to_incident(
                         raise
             session.add(incident)
             session.refresh(incident)
-
+            from keep.api.core.event_normalization import refresh_incident_presentation
+            refresh_incident_presentation(tenant_id, incident, session)
+            session.commit()
             return incident
 
 
@@ -4651,12 +4793,10 @@ def remove_alerts_to_incident_by_incident_id(
             tenant_id, fingerprints, session=session
         )
 
-        service_field = get_json_extract_field(session, Alert.event, "service")
-
         # checking if services of removed alerts are still presented in alerts
         # which still assigned with the incident
-        existed_services_query = (
-            select(func.distinct(service_field))
+        remaining_alerts_query = (
+            select(Alert.event)
             .select_from(LastAlert)
             .join(
                 LastAlertToIncident,
@@ -4669,10 +4809,14 @@ def remove_alerts_to_incident_by_incident_id(
             .filter(
                 LastAlertToIncident.deleted_at == NULL_FOR_DELETED_AT,
                 LastAlertToIncident.incident_id == incident_id,
-                service_field.in_(alerts_data_for_incident["services"]),
             )
         )
-        services_existed = session.exec(existed_services_query)
+        remaining_events = session.exec(remaining_alerts_query).all()
+        services_existed = {
+            svc
+            for ev in remaining_events
+            if (svc := extract_service_from_alert(ev))
+        }
 
         # checking if sources (providers) of removed alerts are still presented in alerts
         # which still assigned with the incident
@@ -4805,6 +4949,9 @@ def remove_alerts_to_incident_by_incident_id(
         session.add(incident)
         session.refresh(incident)
 
+        from keep.api.core.event_normalization import refresh_incident_presentation
+        refresh_incident_presentation(tenant_id, incident, session)
+        session.commit()
         return deleted
 
 
@@ -4837,6 +4984,12 @@ def merge_incidents_to_id(
                 Incident.id.in_(source_incident_ids),
             )
         ).all()
+
+        if get_team_policy() and any(
+            source.team_id != destination_incident.team_id
+            for source in source_incidents
+        ):
+            raise HTTPException(status_code=409, detail="Cannot merge incidents from different teams")
 
         enrich_incidents_with_alerts(tenant_id, source_incidents, session=session)
 
@@ -5329,6 +5482,11 @@ def is_all_alerts_in_status(
     status: AlertStatus = AlertStatus.RESOLVED,
     session: Optional[Session] = None,
 ):
+    if isinstance(fingerprints, Incident):
+        if isinstance(incident, Session):
+            session = incident
+        incident = fingerprints
+        fingerprints = None
 
     if incident and incident.alerts_count == 0:
         return False

@@ -20,6 +20,7 @@ from keep.api.core.db import update_dashboard as update_dashboard_db
 from keep.api.models.time_stamp import TimeStampFilter, _get_time_stamp_filter
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import has_global_access
 
 
 class DashboardCreateDTO(BaseModel):
@@ -156,6 +157,8 @@ def get_metric_widgets(
         IdentityManagerFactory.get_auth_verifier(["read:dashboards"])
     ),
 ):
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global dashboard metrics require admin")
     data = {}
     tenant_id = authenticated_entity.tenant_id
     if not time_stamp.lower_timestamp or not time_stamp.upper_timestamp:

@@ -670,6 +670,7 @@ class Parser:
             config=action,
             provider_parameters=provider_parameters,
             step_type=StepType.ACTION,
+            notification=action.get("notification"),
         )
         return action
 

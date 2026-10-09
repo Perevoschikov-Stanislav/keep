@@ -1,0 +1,85 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "keep",
+            "image": "keep-backend:lab-usability-20261008-r4",
+            "env": [
+              {
+                "name": "KEEP_TEAMS_CONFIG",
+                "value": "version: 1\nvisibility: team\nincident_views:\n  - id: it\n    name: IT\n    cel: team_id == 'it'\n  - id: ops\n    name: OPS\n    cel: team_id == 'ops'\n  - id: scanner\n    name: SCANNER\n    cel: alert.namespace.startsWith('scanner') || alert.name.startsWith('Scanner')\nroles:\n  admin: [/keep-admin]\n  responder: [/keep-ops-l1, /keep-ops-l2, /keep-it]\n  viewer: [/keep-viewer, /keep-scanner]\nteams:\n  - id: ops\n    groups: [/keep-teams/ops]\n    zones: [OPS]\n  - id: it\n    groups: [/keep-teams/it]\n    zones: [IT]\n"
+              },
+              {
+                "name": "TMPDIR",
+                "value": "/state"
+              },
+              {
+                "name": "TEMP",
+                "value": "/state"
+              },
+              {
+                "name": "TMP",
+                "value": "/state"
+              },
+              {
+                "name": "POSTHOG_DISABLED",
+                "value": "true"
+              },
+              {
+                "name": "SENTRY_DISABLED",
+                "value": "true"
+              },
+              {
+                "name": "KEEP_OSS_ONLY",
+                "value": "true"
+              },
+              {
+                "name": "KEEP_MAINTENANCE_DESTRUCTIVE_DROP",
+                "value": "false"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_URL",
+                "value": "http://alertmanager.keep-lab.svc:9093"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_RECONCILER_ENABLED",
+                "value": "true"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_TEAM_MATCHERS",
+                "value": "{\"ops\":[[{\"name\":\"zone\",\"value\":\"OPS\"}]],\"it\":[[{\"name\":\"zone\",\"value\":\"IT\"}]]}"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_RECONCILE_INTERVAL_SECONDS",
+                "value": "15"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_GRACE_PERIOD_SECONDS",
+                "value": "180"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_CONSECUTIVE_MISSES",
+                "value": "2"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_DROP_RATIO_CIRCUIT_BREAKER",
+                "value": "0.5"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_CIRCUIT_GRACE_SECONDS",
+                "value": "180"
+              },
+              {
+                "name": "KEEP_ALERTMANAGER_LEASE_SECONDS",
+                "value": "120"
+              }
+            ],
+            "imagePullPolicy": "IfNotPresent"
+          }
+        ]
+      }
+    }
+  }
+}

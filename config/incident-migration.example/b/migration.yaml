@@ -1,0 +1,24 @@
+api_version: keep.incidents/v1
+kind: LegacyIncidentMigration
+id: reviewed-migration-b
+tenant_id: keep
+source_id: bridge-copy-b
+source_digest: '0000000000000000000000000000000000000000000000000000000000000000'
+candidate_digest: '0000000000000000000000000000000000000000000000000000000000000000'
+rules:
+- legacy_rule_id: 22222222-2222-4222-8222-222222222222
+  correlation_ref: workload
+zones:
+  frontend-west-zone: frontend-west
+  network-east-zone: network-east
+destinations:
+- legacy_id: legacy-channel-b
+  destination_ref: frontend-west-primary
+roots:
+- root_id: 11111111-1111-4111-8111-111111111111
+  incident_id: 11111111-1111-4111-8111-111111111111
+  team_id: frontend-west
+  mode: adopt
+  post_policy: create
+  snooze: import
+  automation_start: cutover_time

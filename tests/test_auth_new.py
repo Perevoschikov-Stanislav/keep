@@ -2,6 +2,8 @@ import time
 
 import jwt
 import pytest
+
+pytest.importorskip("ee", reason="Keep EE modules are excluded in OSS mode")
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException

@@ -1,242 +1,116 @@
-import { useState, useEffect } from "react";
-import {
-  Button,
-  Title,
-  Subtitle,
-  Card,
-  Tab,
-  TabGroup,
-  TabList,
-  TabPanel,
-  TabPanels,
-  Callout,
-} from "@tremor/react";
-import Modal from "@/components/ui/Modal";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import React from "react";
 import { AlertDto } from "@/entities/alerts/model";
-import { set, isSameDay, isAfter } from "date-fns";
+import { SilenceModal, UnsilenceModal } from "@/features/silences/silence-modal";
 import { useAlerts } from "@/entities/alerts/model/useAlerts";
-import { toast } from "react-toastify";
-import "react-quill-new/dist/quill.snow.css";
-import { useApi } from "@/shared/lib/hooks/useApi";
-import { showErrorToast } from "@/shared/ui";
 import { useRevalidateMultiple } from "@/shared/lib/state-utils";
-import "./alert-dismiss-modal.css";
-import dynamic from "next/dynamic";
-
-const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+import { useApi } from "@/shared/lib/hooks/useApi";
+import { toast } from "react-toastify";
+import { showErrorToast } from "@/shared/ui";
+import Modal from "@/components/ui/Modal";
+import { Button, Subtitle } from "@tremor/react";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 
 interface Props {
-  preset: string;
+  preset?: string;
   alert: AlertDto[] | null | undefined;
   handleClose: () => void;
 }
 
 export function AlertDismissModal({
-  preset: presetName,
   alert: alerts,
   handleClose,
 }: Props) {
-  const [dismissComment, setDismissComment] = useState<string>("");
-  const [selectedTab, setSelectedTab] = useState<number>(0);
-  const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
-  const [showError, setShowError] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-
-  const revalidateMultiple = useRevalidateMultiple();
-  const presetsMutator = () => revalidateMultiple(["/preset"]);
   const { alertsMutator } = useAlerts();
-
+  const revalidateMultiple = useRevalidateMultiple();
   const api = useApi();
-  // Ensuring that the useEffect hook is called consistently
-  useEffect(() => {
-    const now = new Date();
-    const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
-    const defaultTime = set(now, {
-      minutes: roundedMinutes,
-      seconds: 0,
-      milliseconds: 0,
-    });
-    setSelectedDateTime(defaultTime);
-  }, []);
+  const { can } = useUserPermissions();
+  const [restoring, setRestoring] = React.useState(false);
 
-  if (!alerts) return null;
+  if (!alerts || alerts.length === 0) return null;
 
-  const isOpen = !!alerts;
+  const firstAlert = alerts[0];
+  const isSilenced = !!firstAlert.silence?.silenced;
+  const isLegacyDismissed = !isSilenced && !!firstAlert.dismissed;
 
-  const handleTabChange = (index: number) => {
-    setSelectedTab(index);
-    if (index === 0) {
-      setSelectedDateTime(null);
-      setShowError(false);
-    }
-  };
+  // If already silenced with structured silence reasons, show selective UnsilenceModal
+  if (alerts.length === 1 && isSilenced && firstAlert.silence?.reasons && firstAlert.silence.reasons.length > 0) {
+    return (
+      <UnsilenceModal
+        isOpen={true}
+        onClose={handleClose}
+        targetName={firstAlert.name || firstAlert.fingerprint}
+        teamId={firstAlert.team_id ?? null}
+        reasons={firstAlert.silence.reasons}
+        onSuccess={async () => {
+          await alertsMutator();
+          await revalidateMultiple(["/preset", "/silences"]);
+          handleClose();
+        }}
+      />
+    );
+  }
 
-  const handleDateTimeChange = (date: Date) => {
-    setSelectedDateTime(date);
-    setShowError(false);
-  };
-
-  const handleDismissChange = async () => {
-    if (selectedTab === 1 && !selectedDateTime) {
-      setShowError(true);
-      return;
-    }
-
-    setIsLoading(true);
-
-    const dismissUntil =
-      selectedTab === 0 ? null : selectedDateTime?.toISOString();
-
-    const enrichments: {
-      dismissed: boolean;
-      note: string;
-      dismissUntil: string;
-    } = {
-      dismissed: !alerts[0]?.dismissed,
-      note: dismissComment,
-      dismissUntil: dismissUntil || "",
+  // If legacy dismissed (without structured silence reasons), show restore confirmation
+  if (alerts.length === 1 && isLegacyDismissed) {
+    const handleLegacyRestore = async () => {
+      if (restoring || !can("update:silence", firstAlert)) return;
+      setRestoring(true);
+      try {
+        await api.post("/alerts/batch_enrich?dispose_on_new_alert=false", {
+          enrichments: {
+            dismissed: false,
+            dismissUntil: "",
+            note: "Restored via UI",
+          },
+          fingerprints: alerts.map((a) => a.fingerprint),
+        });
+        toast.success("Alert restored successfully");
+        await alertsMutator();
+        await revalidateMultiple(["/preset", "/silences"]);
+        handleClose();
+      } catch (err) {
+        showErrorToast(err, "Failed to restore alert");
+      } finally {
+        setRestoring(false);
+      }
     };
 
-    const requestData = {
-      enrichments: enrichments,
-      fingerprints: alerts.map((alert: AlertDto) => alert.fingerprint),
-    };
-
-    try {
-      await api.post(
-        `/alerts/batch_enrich?dispose_on_new_alert=true`,
-        requestData
-      );
-      toast.success(`${alerts.length} alerts dismissed successfully!`, {
-        position: "top-right",
-      });
-      await alertsMutator();
-      await presetsMutator();
-    } catch (error) {
-      showErrorToast(error, "Failed to dismiss alerts");
-    } finally {
-      clearAndClose();
-      setIsLoading(false);
-    }
-  };
-
-  const clearAndClose = () => {
-    setSelectedTab(0);
-    setSelectedDateTime(null);
-    setDismissComment("");
-    setShowError(false);
-    handleClose();
-  };
-
-  const filterPassedTime = (time: Date) => {
-    const currentDate = new Date();
-    const selectedDate = new Date(time);
-
-    if (isSameDay(currentDate, selectedDate)) {
-      return isAfter(selectedDate, currentDate);
-    }
-
-    return true;
-  };
-
-  return (
-    <Modal
-      onClose={clearAndClose}
-      isOpen={isOpen}
-      className="overflow-visible"
-      beforeTitle={alerts?.[0]?.name}
-      title="Dismiss Alert"
-    >
-      {alerts && alerts.length == 1 && alerts[0].dismissed ? (
-        <>
-          <Subtitle className="text-center">
-            Are you sure you want to restore this alert?
+    return (
+      <Modal
+        isOpen={true}
+        onClose={handleClose}
+        title="Restore Alert"
+        className="w-full max-w-sm p-6"
+      >
+        <div className="space-y-4">
+          <Subtitle className="text-center text-xs">
+            Are you sure you want to restore this legacy dismissed alert?
           </Subtitle>
-          <div className="flex justify-center mt-4 space-x-2">
-            <Button onClick={handleDismissChange} color="orange">
-              Restore
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <Callout color="orange" title="Dismissing Alerts" className="mb-2.5">
-            {`This will dismiss the alert until an alert with the same fingerprint comes in${
-              selectedTab === 1 ? ` or until ${selectedDateTime}.` : "."
-            }`}
-          </Callout>
-          <TabGroup
-            index={selectedTab}
-            onIndexChange={(index: number) => handleTabChange(index)}
-            className="mb-4"
-          >
-            <TabList>
-              <Tab>Dismiss Forever</Tab>
-              <Tab>Dismiss Until</Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel></TabPanel>
-              <TabPanel>
-                <Card className="relative z-50 mt-4 flex justify-center items-center">
-                  <div className="flex flex-col items-center">
-                    <DatePicker
-                      selected={selectedDateTime}
-                      onChange={handleDateTimeChange}
-                      showTimeSelect
-                      timeFormat="p"
-                      timeIntervals={15}
-                      timeCaption="Time"
-                      dateFormat="MMMM d, yyyy h:mm:ss aa"
-                      minDate={new Date()}
-                      minTime={set(new Date(), {
-                        hours: 0,
-                        minutes: 0,
-                        seconds: 0,
-                      })}
-                      maxTime={set(new Date(), {
-                        hours: 23,
-                        minutes: 59,
-                        seconds: 59,
-                      })}
-                      filterTime={filterPassedTime}
-                      inline
-                      calendarClassName="custom-datepicker"
-                    />
-                    {showError && (
-                      <div className="text-red-500 mt-2">
-                        Must choose a date
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </TabPanel>
-            </TabPanels>
-          </TabGroup>
-          <Title>Dismiss Comment</Title>
-          <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-            <ReactQuill
-              value={dismissComment}
-              onChange={(value: string) => setDismissComment(value)}
-              theme="snow"
-              placeholder="Add your dismiss comment here..."
-            />
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="secondary" color="orange" onClick={clearAndClose}>
+          <div className="flex justify-center gap-2">
+            <Button size="xs" variant="secondary" color="gray" onClick={handleClose}>
               Cancel
             </Button>
-            <Button
-              onClick={handleDismissChange}
-              color="orange"
-              loading={isLoading}
-            >
-              Dismiss
+            <Button size="xs" color="orange" onClick={handleLegacyRestore}
+              disabled={restoring || !can("update:silence", firstAlert)}>
+              Confirm Restore
             </Button>
           </div>
-        </>
-      )}
-    </Modal>
+        </div>
+      </Modal>
+    );
+  }
+
+  // Otherwise, create a new silence rule using the unified SilenceModal
+  return (
+    <SilenceModal
+      isOpen={true}
+      onClose={handleClose}
+      alerts={alerts}
+      onSuccess={async () => {
+        await alertsMutator();
+        await revalidateMultiple(["/preset", "/silences"]);
+        handleClose();
+      }}
+    />
   );
 }

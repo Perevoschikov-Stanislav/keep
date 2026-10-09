@@ -6,6 +6,7 @@ import { AlertsQuery } from "@/entities/alerts/model";
 // Using dynamic import to avoid hydration issues with react-player
 import dynamic from "next/dynamic";
 import clsx from "clsx";
+import { useHydratedSession } from "@/shared/lib/hooks/useHydratedSession";
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
 interface PresetsNoiseProps {
@@ -14,6 +15,7 @@ interface PresetsNoiseProps {
 
 export const PresetsNoise = ({ presets }: PresetsNoiseProps) => {
   const api = useApi();
+  const { data: session } = useHydratedSession();
   const { silencedPresetIds } = useSilencedPresets();
   
   const noisyPresets = useMemo(
@@ -23,8 +25,8 @@ export const PresetsNoise = ({ presets }: PresetsNoiseProps) => {
 
   const { data: shouldDoNoise } = useSWR(
     () =>
-      api.isReady() && noisyPresets
-        ? noisyPresets.map((noisyPreset) => noisyPreset.id)
+      api.isReady() && noisyPresets?.length
+        ? ["/presets/noise", session?.user?.email || "guest", ...noisyPresets.map((noisyPreset) => noisyPreset.id)]
         : null,
     async () => {
       let shouldDoNoise = false;

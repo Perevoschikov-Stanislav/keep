@@ -64,7 +64,7 @@ const WFDebugWithAIButton = ({
   description: string;
 }) => {
   const { data: config } = useConfig();
-  if (!config?.OPEN_AI_API_KEY_SET) {
+  if (config?.KEEP_OSS_ONLY !== false || !config?.OPEN_AI_API_KEY_SET) {
     return null;
   }
   return <WFDebugWithAI errors={errors} description={description} />;

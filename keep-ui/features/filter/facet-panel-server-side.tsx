@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import {
-  FacetDto,
   FacetOptionDto,
   FacetOptionsQueries,
   FacetOptionsQuery,
@@ -16,6 +15,7 @@ import { AddFacetModalWithSuggestions } from "./add-facet-modal-with-suggestions
 export interface FacetsPanelProps {
   /** Entity name to fetch facets, e.g., "incidents" for /incidents/facets and /incidents/facets/options */
   entityName: string;
+  panelId?: string;
   className?: string;
   usePropertyPathsSuggestions?: boolean;
   initialFacetsData?: InitialFacetsData;
@@ -41,6 +41,7 @@ export interface FacetsPanelProps {
 
 export const FacetsPanelServerSide: React.FC<FacetsPanelProps> = ({
   entityName,
+  panelId,
   usePropertyPathsSuggestions,
   facetOptionsCel,
   className,
@@ -99,9 +100,9 @@ export const FacetsPanelServerSide: React.FC<FacetsPanelProps> = ({
   return (
     <>
       <FacetsPanel
-        panelId={entityName}
+        panelId={panelId || entityName}
         className={className || ""}
-        facets={facetsData as FacetDto[]}
+        facets={facetsData}
         facetOptions={facetOptions as Record<string, FacetOptionDto[]>}
         areFacetOptionsLoading={!isSilentReloading && facetOptionsLoading}
         clearFiltersToken={clearFiltersToken}
@@ -112,6 +113,9 @@ export const FacetsPanelServerSide: React.FC<FacetsPanelProps> = ({
           setFacetQueriesState({ ...facetQueriesState, [facetId]: "" })
         }
         onDeleteFacet={(facetId) => facetActions.deleteFacet(facetId)}
+        onUpdateFacet={(facetId, updatedFacet) =>
+          facetActions.updateFacet(facetId, updatedFacet)
+        }
         onReloadFacetOptions={(facetQueries) =>
           setFacetQueriesState({ ...facetQueries })
         }

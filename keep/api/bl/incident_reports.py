@@ -82,7 +82,8 @@ class IncidentReportsBl:
 
     @property
     def open_ai_client(self):
-        if not self.__open_ai_client and os.environ.get("OPENAI_API_KEY"):
+        if (not self.__open_ai_client and os.environ.get("KEEP_OSS_ONLY", "true") == "false"
+                and os.environ.get("OPENAI_API_KEY")):
             self.__open_ai_client = OpenAI()
 
         return self.__open_ai_client
@@ -94,9 +95,10 @@ class IncidentReportsBl:
         )
 
     def get_incident_reports(
-        self, incidents_query_cel: str, allowed_incident_ids: list[str]
+        self, incidents_query_cel: str, allowed_incident_ids: list[str],
+        allowed_team_ids: frozenset[str] | None = None,
     ) -> IncidentReport:
-        incidents = self.__get_incidents(incidents_query_cel, allowed_incident_ids)
+        incidents = self.__get_incidents(incidents_query_cel, allowed_incident_ids, allowed_team_ids)
         open_ai_report_part = self.__calculate_report_in_openai(incidents)
         report = IncidentReport(
             most_frequent_reasons=open_ai_report_part.most_frequent_reasons
@@ -320,7 +322,8 @@ class IncidentReportsBl:
         ]
 
     def __get_incidents(
-        self, incidents_query_cel: str, allowed_incident_ids: list[str]
+        self, incidents_query_cel: str, allowed_incident_ids: list[str],
+        allowed_team_ids: frozenset[str] | None,
     ) -> list[IncidentDto]:
         query_result = self.incidents_bl.query_incidents(
             tenant_id=self.tenant_id,
@@ -328,6 +331,7 @@ class IncidentReportsBl:
             limit=100,
             offset=0,
             allowed_incident_ids=allowed_incident_ids,
+            allowed_team_ids=allowed_team_ids,
             is_candidate=False,
         )
         return query_result.items

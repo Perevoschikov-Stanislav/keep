@@ -1,0 +1,19 @@
+{
+  "dependencies": [
+    {
+      "name": "keep",
+      "version": "0.1.97",
+      "repository": "https://keephq.github.io/helm-charts"
+    },
+    {
+      "name": "redis",
+      "version": "19.5.5",
+      "repository": "oci://registry-1.docker.io/bitnamicharts"
+    },
+    {
+      "name": "oauth2-proxy",
+      "version": "7.8.1",
+      "repository": "https://oauth2-proxy.github.io/manifests"
+    }
+  ]
+}

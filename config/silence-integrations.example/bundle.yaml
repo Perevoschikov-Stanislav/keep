@@ -1,0 +1,134 @@
+# Illustrative addresses and secret references; replace through IaC before activation.
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: silence-integrations
+tenant_id: keep
+revision: example-1
+keep_url: https://keep.example.net
+access:
+  path: team-policy.yaml
+    sha256: e628b5c07bfa52162b72f583b3211886dfdf9e516413604bf725f4a924a4d92d
+proof_profiles:
+- id: operator-access
+  issuer: https://login.example.net/realms/keep
+  audience: keep-actor-proof
+  jwks_url: https://login.example.net/realms/keep/protocol/openid-connect/certs
+  algorithms:
+  - RS256
+  authorized_parties:
+  - keep-operator-session
+  groups_claim: groups
+  party_claim: azp
+  required_claims:
+    typ: Bearer
+    keep_actor_kind: user
+  max_age_seconds: 300
+  clock_skew_seconds: 30
+  jwks_timeout_seconds: 5
+  jwks_cache_seconds: 300
+service_clients:
+- id: notification-router
+  auth_ref: env:KEEP_ROUTER_SERVICE_TOKEN
+  origin: external-router
+  team_ids: &id001
+  - cedar
+  - quartz
+  proof_profile_refs:
+  - operator-access
+  scopes:
+  - read:silence
+  - write:silence
+  - update:silence
+- id: audit-reader
+  auth_ref: env:KEEP_AUDIT_SERVICE_TOKEN
+  origin: audit-reader
+  team_ids: *id001
+  proof_profile_refs:
+  - operator-access
+  scopes:
+  - read:silence
+transports:
+- id: events-webhook
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://events.example.net
+  auth_ref: env:KEEP_EVENTS_WEBHOOK_TOKEN
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 10
+    retry:
+      max_attempts: 5
+      initial_backoff_seconds: 2
+      max_backoff_seconds: 60
+      multiplier: 2
+    rate_limit:
+      per_second: 5
+      burst: 5
+    debounce_seconds: 0
+- id: audit-webhook
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: https://audit.example.net
+  auth_ref: env:KEEP_AUDIT_WEBHOOK_TOKEN
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 10
+    retry:
+      max_attempts: 5
+      initial_backoff_seconds: 2
+      max_backoff_seconds: 60
+      multiplier: 2
+    rate_limit:
+      per_second: 5
+      burst: 5
+    debounce_seconds: 0
+destinations:
+- id: cedar-events
+  team_id: cedar
+  transport_ref: events-webhook
+  options:
+    path: /keep/events/cedar
+- id: quartz-events
+  team_id: quartz
+  transport_ref: events-webhook
+  options:
+    path: /keep/events/quartz
+- id: cedar-audit
+  team_id: cedar
+  transport_ref: audit-webhook
+  options:
+    path: /keep/events/cedar
+- id: quartz-audit
+  team_id: quartz
+  transport_ref: audit-webhook
+  options:
+    path: /keep/events/quartz
+subscribers:
+- id: events-state
+  team_ids: *id001
+  event_types: &id002
+  - silence.created
+  - silence.updated
+  - silence.activated
+  - silence.cancelled
+  - silence.expired
+  destination_refs:
+  - cedar-events
+  - quartz-events
+- id: audit-state
+  team_ids: *id001
+  event_types: *id002
+  destination_refs:
+  - cedar-audit
+  - quartz-audit
+dispatch:
+  scan_interval_seconds: 5
+  batch_size: 100
+  lease_seconds: 60
+  snapshot_page_size: 100

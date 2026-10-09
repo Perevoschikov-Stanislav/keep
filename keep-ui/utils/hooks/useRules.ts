@@ -3,6 +3,7 @@ import { useApi } from "@/shared/lib/hooks/useApi";
 import { CelAst } from "../cel-ast";
 
 export type Rule = {
+  iac?: { managed: boolean; revision: string } | null;
   id: string;
   name: string;
   item_description: string | null;

@@ -4,6 +4,7 @@ import { Button } from "@tremor/react";
 import { EmptyStateCard } from "@/shared/ui/EmptyState/EmptyStateCard";
 import { MdFlashOn } from "react-icons/md";
 import { useRouter } from "next/navigation";
+import { useConfig } from "@/utils/hooks/useConfig";
 
 interface Props {
   onClearFilters: () => void;
@@ -25,6 +26,7 @@ export const IncidentsNotFoundForFiltersPlaceholder = ({
 
 export const IncidentsNotFoundPlaceholder = () => {
   const router = useRouter();
+  const { data: config } = useConfig();
   return (
     <EmptyStateCard
       icon={MdFlashOn}
@@ -42,7 +44,7 @@ export const IncidentsNotFoundPlaceholder = () => {
         >
           Correlate Alerts Manually
         </Button>
-        <Button
+        {config?.KEEP_OSS_ONLY === false && <Button
           color="orange"
           variant="primary"
           size="md"
@@ -51,7 +53,7 @@ export const IncidentsNotFoundPlaceholder = () => {
           }}
         >
           Try AI Correlation
-        </Button>
+        </Button>}
       </div>
     </EmptyStateCard>
   );

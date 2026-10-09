@@ -1,0 +1,28 @@
+name: zones
+description: Zone responsibility and environment kind by cluster (default)
+priority: 100
+type: csv
+matchers:
+- - cluster
+rows:
+- cluster: ^(customer-a|platform-customer-a)$
+  zone: OPS
+  env_kind: prod
+- cluster: ^customer-b$
+  zone: OPS
+  env_kind: prod
+- cluster: ^infra-cluster$
+  zone: IT
+  env_kind: infra
+- cluster: ^production-cluster$
+  zone: OPS
+  env_kind: prod
+- cluster: ^development-cluster$
+  zone: IT
+  env_kind: stand
+- cluster: ^(internal-cluster|edge-cluster|storage-cluster)$
+  zone: IT
+  env_kind: internal
+- cluster: .*
+  zone: UNASSIGNED
+  env_kind: unknown

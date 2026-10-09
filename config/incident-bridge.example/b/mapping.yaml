@@ -1,0 +1,9 @@
+name: Configured component ownership
+priority: 20
+matchers:
+- - service
+rows:
+- service: example-0
+  zone: frontend-west-zone
+- service: example-1
+  zone: network-east-zone

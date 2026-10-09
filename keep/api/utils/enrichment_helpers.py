@@ -1,4 +1,5 @@
 import logging
+from copy import deepcopy
 from datetime import datetime
 from typing import Optional
 
@@ -185,6 +186,8 @@ def convert_db_alerts_to_dto_alerts(
     with_incidents: bool = False,
     with_alert_instance_enrichment: bool = False,
     session: Optional[Session] = None,
+    with_silences: bool = True,
+    exclude_silence_fields: bool = False,
 ) -> list[AlertDto | AlertWithIncidentLinkMetadataDto]:
     """
     Enriches the alerts with the enrichment data.
@@ -198,6 +201,7 @@ def convert_db_alerts_to_dto_alerts(
     """
     with existed_or_new_session(session) as session:
         alerts_dto = []
+        canonical_alerts = []
         with tracer.start_as_current_span("alerts_enrichment"):
             # enrich the alerts with the enrichment data
             for _object in alerts:
@@ -214,24 +218,39 @@ def convert_db_alerts_to_dto_alerts(
                 elif alert.alert_enrichment and not with_alert_instance_enrichment:
                     enrichments = alert.alert_enrichment.enrichments
 
-                alert.event.update(enrichments)
+                event = deepcopy(alert.event)
+                event.update(deepcopy(enrichments))
+                from keep.api.core.event_normalization import DERIVED, render_presentation
+                for key in DERIVED:
+                    event.pop(key, None)
+                    if alert.event.get(key) is not None:
+                        event[key] = deepcopy(alert.event[key])
+                event["correlation"] = deepcopy(alert.correlation_context) if alert.correlation_context and alert.correlation_context.get("team_id") == alert.team_id else None
+                if event.get("normalization"):
+                    event["presentation"] = render_presentation(alert.tenant_id, event.get("normalized"), event["normalization"])
+                event["team_id"] = alert.team_id
+                event["fingerprint"] = alert.fingerprint
+                event.pop("silence", None)
+                if exclude_silence_fields:
+                    event.pop("dismissed", None)
+                    event.pop("dismissUntil", None)
 
                 if with_incidents:
                     if alert._incidents:
-                        alert.event["incident"] = ",".join(
+                        event["incident"] = ",".join(
                             str(incident.id) for incident in alert._incidents
                         )
-                        alert.event["incident_dto"] = [
-                            IncidentDto.from_db_incident(incident)
+                        event["incident_dto"] = [
+                            IncidentDto.from_db_incident(incident, session=session, with_silences=with_silences)
                             for incident in alert._incidents
                         ]
                 try:
                     if alert_to_incident is not None:
                         alert_dto = AlertWithIncidentLinkMetadataDto.from_db_instance(
-                            alert, alert_to_incident
+                            alert, alert_to_incident, event=event
                         )
                     else:
-                        alert_dto = AlertDto(**alert.event)
+                        alert_dto = AlertDto(**event)
 
                     if enrichments:
                         parse_and_enrich_deleted_and_assignees(alert_dto, enrichments)
@@ -260,4 +279,16 @@ def convert_db_alerts_to_dto_alerts(
                 alert_dto.providerId = alert.provider_id
                 alert_dto.providerType = alert.provider_type
                 alerts_dto.append(alert_dto)
+                canonical_alerts.append(alert)
+        if with_silences:
+            from keep.api.bl.silences_evaluator import SilenceEvaluator
+
+            for tenant_id in {alert.tenant_id for alert in canonical_alerts}:
+                evaluator = SilenceEvaluator(session, tenant_id)
+                results = evaluator.alerts([alert for alert in canonical_alerts if alert.tenant_id == tenant_id])
+                for alert, dto in zip(canonical_alerts, alerts_dto):
+                    if alert.tenant_id == tenant_id:
+                        dto.silence = evaluator.metadata(results[alert.id])
+                        # Keep legacy dismiss effective until its explicit migration in task 19.
+                        dto.dismissed = dto.dismissed or dto.silence.silenced
     return alerts_dto

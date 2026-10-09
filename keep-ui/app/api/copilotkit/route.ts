@@ -7,6 +7,10 @@ import OpenAI, { OpenAIError } from "openai";
 import { NextRequest } from "next/server";
 
 export const POST = async (req: NextRequest) => {
+  if (process.env.KEEP_OSS_ONLY !== "false") {
+    return new Response("Not found", { status: 404 });
+  }
+
   function initializeCopilotRuntime() {
     try {
       const openai = new OpenAI({

@@ -1,7 +1,7 @@
 from typing import List
 
 import chevron
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -20,6 +20,7 @@ from keep.api.core.limiter import limiter
 from keep.api.models.alert import AlertDto
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import has_global_access
 
 router = APIRouter()
 
@@ -93,6 +94,8 @@ def get_metrics(
     # they would make us expose our app's pod id's. This is a customer-facing endpoint
     # we're deploying to SaaS, and we want to hide our internal infra.
 
+    if not has_global_access(authenticated_entity):
+        raise HTTPException(status_code=403, detail="Global metrics require admin")
     tenant_id = authenticated_entity.tenant_id
 
     export = str()

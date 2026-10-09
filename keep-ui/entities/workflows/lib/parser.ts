@@ -66,6 +66,7 @@ function getV2StepOrV2Action(
       stepParams: provider?.query_params!,
       actionParams: provider?.notify_params!,
       if: actionOrStep.if,
+      notification: actionOrStep.notification,
       vars: actionOrStep.vars,
       "on-failure": actionOrStep?.["on-failure"],
     },
@@ -456,6 +457,7 @@ export function getYamlActionFromAction(
     foreach: foreach ? foreach : undefined,
     if: ifParam,
     condition: condition ? [getYamlConditionFromStep(condition)] : undefined,
+    notification: s.properties.notification,
     provider: provider,
     "on-failure": s.properties["on-failure"],
   };

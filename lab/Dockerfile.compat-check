@@ -1,0 +1,5 @@
+ARG KEEP_CHECK_BASE=keep-am-review-check:20261007
+FROM ${KEEP_CHECK_BASE}
+USER root
+COPY --chown=1000:1000 keep /app/keep
+USER 1000:1000

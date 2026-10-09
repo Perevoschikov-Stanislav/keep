@@ -6,11 +6,12 @@ import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 import { useConfig } from "@/utils/hooks/useConfig";
 import { AuthType } from "@/utils/authenticationType";
+import { OAUTH2PROXY_SIGN_OUT_URL } from "@/shared/lib/oauth2proxy-logout";
 
 export function useSignOut() {
   const { data: configData } = useConfig();
 
-  return useCallback(() => {
+  return useCallback(async () => {
     if (!configData) {
       return;
     }
@@ -26,7 +27,8 @@ export function useSignOut() {
     // For OAUTH2PROXY auth, redirect to oauth2-proxy's sign_out endpoint
     // This properly clears the oauth2-proxy session
     if (configData?.AUTH_TYPE === AuthType.OAUTH2PROXY) {
-      window.location.href = "/oauth2/sign_out";
+      await signOut({ redirect: false });
+      window.location.href = OAUTH2PROXY_SIGN_OUT_URL;
       return;
     }
 

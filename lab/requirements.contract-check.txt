@@ -1,0 +1,6 @@
+# Test image only. Application/poetry dependencies are unchanged.
+jsonschema==4.23.0
+attrs==24.2.0
+referencing==0.35.1
+jsonschema-specifications==2024.10.1
+rpds-py==0.21.0

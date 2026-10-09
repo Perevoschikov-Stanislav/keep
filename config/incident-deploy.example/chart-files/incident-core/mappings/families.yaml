@@ -1,0 +1,29 @@
+name: families
+description: Alert family by alertname — selects correlation rule.
+  First matching line wins.
+priority: 80
+type: csv
+matchers:
+- - alertname
+rows:
+- alertname: ^(Watchdog|InfoInhibitor)$|Inhibitor$
+  family: meta
+- alertname: ^Lis
+  family: lis
+- alertname: ^(ServiceDown|MattermostServiceDown)$
+  family: probe
+- alertname: ^(KubeNodeNotReady|KubeNodeUnreachable|KubeNodeReadinessFlapping|KubeletDown|KubeletTooManyPods)$
+  family: k8s-node
+- alertname: ^(NodeFilesystem|KubePersistentVolume|CsiLvm|DiskSpaceCritical|VolumeReadOnly|VolumeProbe|Longhorn|Rbpo|S3|GitLabVMDisk|HDDIsNotResponding|MinioDrive)
+  family: storage
+- alertname: ^(Node|HypervisorLowMemory|LowMemory|MultipleNodesLowMemory|Memory will
+    end|High disk write latency|DataHubVM)
+  family: node
+- alertname: ^(Kube(Pod|Container|Deployment|StatefulSet|DaemonSet|Job|Pdb|Hpa|ReplicaSet)|CPUThrottlingHigh|PlatformContainerOOMKilled|PlatformJvmHeapPressure|PlatformNonHeapOverBudget)
+  family: workload
+- alertname: ^(Postgres|HugeReplicationLag)
+  family: db
+- alertname: ^(Kafka|MLServiceKafkaHangs|Iceberg)
+  family: kafka
+- alertname: .*
+  family: other

@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:keep-fork:silences:v1",
+  "title": "Keep Silence v1 wire contract",
+  "description": "Select a $defs message type when validating. Cross-field time, authorization and coverage rules are specified in contract-v1.md.",
+  "anyOf": [
+    { "$ref": "#/$defs/CreateCommand" },
+    { "$ref": "#/$defs/UpdateCommand" },
+    { "$ref": "#/$defs/CancelCommand" },
+    { "$ref": "#/$defs/Silence" },
+    { "$ref": "#/$defs/MutationResponse" },
+    { "$ref": "#/$defs/SilenceList" },
+    { "$ref": "#/$defs/EffectiveQuery" },
+    { "$ref": "#/$defs/EffectiveResponse" },
+    { "$ref": "#/$defs/LifecycleEvent" },
+    { "$ref": "#/$defs/Error" }
+  ],
+  "$defs": {
+    "Version": { "const": 1 },
+    "Id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "Uuid": { "type": "string", "format": "uuid" },
+    "UtcTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "NullableTime": { "anyOf": [{ "$ref": "#/$defs/UtcTime" }, { "type": "null" }] },
+    "TeamId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] },
+    "CorrelationId": { "type": ["string", "null"], "minLength": 1, "maxLength": 512 },
+    "Comment": { "type": "string", "maxLength": 4000 },
+    "Revision": { "type": "integer", "minimum": 1 },
+    "State": { "enum": ["scheduled", "active", "expired", "cancelled"] },
+    "Actor": {
+      "type": "object",
+      "required": ["kind", "subject", "issuer", "display_name"],
+      "properties": {
+        "kind": { "enum": ["user", "service"] },
+        "subject": { "$ref": "#/$defs/Id" },
+        "issuer": { "type": ["string", "null"], "minLength": 1, "maxLength": 2048 },
+        "display_name": { "type": "string", "maxLength": 256 }
+      }
+    },
+    "Selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "fingerprints"],
+          "properties": {
+            "kind": { "const": "alert" },
+            "fingerprints": {
+              "type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "incident_ids"],
+          "properties": {
+            "kind": { "const": "incident" },
+            "incident_ids": {
+              "type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/Uuid" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "cel"],
+          "properties": {
+            "kind": { "const": "filter" },
+            "cel": { "type": "string", "minLength": 1, "maxLength": 8192 }
+          }
+        }
+      ]
+    },
+    "CreateCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "client_request_id", "team_id", "selector", "starts_at", "ends_at", "comment", "correlation_id"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "client_request_id": { "$ref": "#/$defs/Uuid" },
+        "team_id": { "$ref": "#/$defs/TeamId" },
+        "selector": { "$ref": "#/$defs/Selector" },
+        "starts_at": { "$ref": "#/$defs/NullableTime" },
+        "ends_at": { "$ref": "#/$defs/NullableTime" },
+        "comment": { "$ref": "#/$defs/Comment" },
+        "correlation_id": { "$ref": "#/$defs/CorrelationId" }
+      }
+    },
+    "Changes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "selector": { "$ref": "#/$defs/Selector" },
+        "starts_at": { "$ref": "#/$defs/UtcTime" },
+        "ends_at": { "$ref": "#/$defs/NullableTime" },
+        "comment": { "$ref": "#/$defs/Comment" }
+      }
+    },
+    "UpdateCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "client_request_id", "expected_revision", "changes", "correlation_id"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "client_request_id": { "$ref": "#/$defs/Uuid" },
+        "expected_revision": { "$ref": "#/$defs/Revision" },
+        "changes": { "$ref": "#/$defs/Changes" },
+        "correlation_id": { "$ref": "#/$defs/CorrelationId" }
+      }
+    },
+    "CancelCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "client_request_id", "expected_revision", "reason", "correlation_id"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "client_request_id": { "$ref": "#/$defs/Uuid" },
+        "expected_revision": { "$ref": "#/$defs/Revision" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "correlation_id": { "$ref": "#/$defs/CorrelationId" }
+      }
+    },
+    "Silence": {
+      "type": "object",
+      "required": ["schema_version", "id", "revision", "tenant_id", "team_id", "selector", "starts_at", "ends_at", "comment", "created_by", "updated_by", "created_at", "updated_at", "cancelled_at", "origin", "correlation_id", "state", "evaluated_at"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "id": { "$ref": "#/$defs/Uuid" },
+        "revision": { "$ref": "#/$defs/Revision" },
+        "tenant_id": { "$ref": "#/$defs/Id" },
+        "team_id": { "$ref": "#/$defs/TeamId" },
+        "selector": { "$ref": "#/$defs/Selector" },
+        "starts_at": { "$ref": "#/$defs/UtcTime" },
+        "ends_at": { "$ref": "#/$defs/NullableTime" },
+        "comment": { "$ref": "#/$defs/Comment" },
+        "created_by": { "$ref": "#/$defs/Actor" },
+        "updated_by": { "$ref": "#/$defs/Actor" },
+        "created_at": { "$ref": "#/$defs/UtcTime" },
+        "updated_at": { "$ref": "#/$defs/UtcTime" },
+        "cancelled_at": { "$ref": "#/$defs/NullableTime" },
+        "origin": { "$ref": "#/$defs/Id" },
+        "correlation_id": { "$ref": "#/$defs/CorrelationId" },
+        "state": { "$ref": "#/$defs/State" },
+        "evaluated_at": { "$ref": "#/$defs/UtcTime" },
+        "read_only": { "type": "boolean" },
+        "synchronization": { "type": "array", "items": {
+          "type": "object", "required": ["source_id", "state", "reason"],
+          "properties": { "source_id": { "type": "string" }, "state": { "type": "string" },
+            "reason": { "type": ["string", "null"] } }
+        } }
+      },
+      "allOf": [{
+        "if": { "properties": { "state": { "const": "cancelled" } } },
+        "then": { "properties": { "cancelled_at": { "$ref": "#/$defs/UtcTime" } } },
+        "else": { "properties": { "cancelled_at": { "type": "null" } } }
+      }]
+    },
+    "MutationResponse": {
+      "type": "object",
+      "required": ["schema_version", "client_request_id", "replayed", "result"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "client_request_id": { "$ref": "#/$defs/Uuid" },
+        "replayed": { "type": "boolean" },
+        "result": { "$ref": "#/$defs/Silence" }
+      }
+    },
+    "SilenceList": {
+      "type": "object",
+      "required": ["schema_version", "evaluated_at", "items", "next_cursor"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "evaluated_at": { "$ref": "#/$defs/UtcTime" },
+        "items": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/Silence" } },
+        "next_cursor": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "fingerprint"],
+          "properties": {
+            "kind": { "const": "alert" },
+            "fingerprint": { "type": "string", "minLength": 1, "maxLength": 1024 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "incident_id"],
+          "properties": {
+            "kind": { "const": "incident" },
+            "incident_id": { "$ref": "#/$defs/Uuid" }
+          }
+        }
+      ]
+    },
+    "EffectiveQuery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "targets"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "targets": {
+          "type": "array", "minItems": 1, "maxItems": 1000, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/Target" }
+        }
+      }
+    },
+    "Reason": {
+      "type": "object",
+      "required": ["silence_id", "revision", "via", "incident_id", "ends_at"],
+      "properties": {
+        "silence_id": { "$ref": "#/$defs/Uuid" },
+        "revision": { "$ref": "#/$defs/Revision" },
+        "via": { "enum": ["fingerprint", "filter", "incident"] },
+        "incident_id": { "anyOf": [{ "$ref": "#/$defs/Uuid" }, { "type": "null" }] },
+        "ends_at": { "$ref": "#/$defs/NullableTime" },
+        "read_only": { "type": "boolean" }
+      },
+      "allOf": [{
+        "if": { "properties": { "via": { "const": "incident" } } },
+        "then": { "properties": { "incident_id": { "$ref": "#/$defs/Uuid" } } },
+        "else": { "properties": { "incident_id": { "type": "null" } } }
+      }]
+    },
+    "EffectiveItem": {
+      "type": "object",
+      "required": ["target", "silenced", "coverage", "silenced_until", "reasons", "total_alerts", "silenced_alerts"],
+      "properties": {
+        "target": { "$ref": "#/$defs/Target" },
+        "silenced": { "type": "boolean" },
+        "coverage": { "enum": ["none", "partial", "full"] },
+        "silenced_until": { "$ref": "#/$defs/NullableTime" },
+        "reasons": { "type": "array", "items": { "$ref": "#/$defs/Reason" }, "uniqueItems": true },
+        "total_alerts": { "type": "integer", "minimum": 0 },
+        "silenced_alerts": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "silenced": { "const": true } } },
+          "then": { "properties": { "coverage": { "const": "full" }, "reasons": { "minItems": 1 } } },
+          "else": { "properties": { "coverage": { "enum": ["none", "partial"] }, "silenced_until": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "coverage": { "const": "none" } } },
+          "then": { "properties": { "reasons": { "maxItems": 0 }, "silenced_alerts": { "const": 0 } } }
+        },
+        {
+          "if": { "properties": { "coverage": { "const": "partial" } } },
+          "then": { "properties": { "reasons": { "minItems": 1 }, "silenced_alerts": { "minimum": 1 } } }
+        },
+        {
+          "if": { "properties": { "target": { "properties": { "kind": { "const": "alert" } } } } },
+          "then": { "properties": { "total_alerts": { "const": 1 }, "coverage": { "enum": ["none", "full"] } } }
+        }
+      ]
+    },
+    "EffectiveResponse": {
+      "type": "object",
+      "required": ["schema_version", "evaluated_at", "items"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "evaluated_at": { "$ref": "#/$defs/UtcTime" },
+        "items": { "type": "array", "minItems": 1, "maxItems": 1000, "items": { "$ref": "#/$defs/EffectiveItem" } }
+      }
+    },
+    "LifecycleEvent": {
+      "type": "object",
+      "required": ["schema_version", "event_id", "event_type", "occurred_at", "effective_at", "silence_id", "revision", "tenant_id", "team_id", "origin", "correlation_id", "client_request_id", "actor", "reason", "resource"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "event_id": { "$ref": "#/$defs/Uuid" },
+        "event_type": { "enum": ["silence.created", "silence.updated", "silence.activated", "silence.cancelled", "silence.expired"] },
+        "occurred_at": { "$ref": "#/$defs/UtcTime" },
+        "effective_at": { "$ref": "#/$defs/UtcTime" },
+        "silence_id": { "$ref": "#/$defs/Uuid" },
+        "revision": { "$ref": "#/$defs/Revision" },
+        "tenant_id": { "$ref": "#/$defs/Id" },
+        "team_id": { "$ref": "#/$defs/TeamId" },
+        "origin": { "$ref": "#/$defs/Id" },
+        "correlation_id": { "$ref": "#/$defs/CorrelationId" },
+        "client_request_id": { "anyOf": [{ "$ref": "#/$defs/Uuid" }, { "type": "null" }] },
+        "actor": { "$ref": "#/$defs/Actor" },
+        "reason": { "$ref": "#/$defs/Comment" },
+        "resource": { "$ref": "#/$defs/Silence" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "event_type": { "enum": ["silence.activated", "silence.expired"] } } },
+          "then": { "properties": { "client_request_id": { "type": "null" }, "actor": { "properties": { "kind": { "const": "service" } } } } }
+        },
+        {
+          "if": { "properties": { "event_type": { "enum": ["silence.created", "silence.updated", "silence.cancelled"] } } },
+          "then": { "properties": { "client_request_id": { "$ref": "#/$defs/Uuid" } } }
+        }
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "required": ["schema_version", "detail"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/Version" },
+        "detail": {
+          "type": "object",
+          "required": ["code", "message", "field", "current_revision"],
+          "properties": {
+            "code": {
+              "enum": ["unauthenticated", "forbidden", "not_found", "idempotency_conflict", "revision_conflict", "invalid_state", "invalid_selector", "invalid_time", "validation_error", "actor_proof_required", "invalid_actor_proof", "actor_verification_unavailable", "silence_verification_unavailable"]
+            },
+            "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "field": { "type": ["string", "null"], "minLength": 1 },
+            "current_revision": { "anyOf": [{ "$ref": "#/$defs/Revision" }, { "type": "null" }] }
+          }
+        }
+      }
+    }
+  }
+}

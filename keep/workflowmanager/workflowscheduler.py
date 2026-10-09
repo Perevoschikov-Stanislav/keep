@@ -3,6 +3,7 @@ import hashlib
 import logging
 import time
 import uuid
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from threading import Lock
@@ -93,6 +94,7 @@ class WorkflowScheduler:
         )
         self.scheduler_future = None
         self.futures = set()
+        self._automation_next_scan = 0
         # Initialize metrics for queue size
         self._update_queue_metrics()
 
@@ -134,7 +136,8 @@ class WorkflowScheduler:
             workflow_id = workflow.get("workflow_id")
 
             try:
-                workflow_obj = self.workflow_store.get_workflow(tenant_id, workflow_id)
+                workflow_obj = self.workflow_store.get_workflow(tenant_id, workflow_id,
+                    expected_revision=workflow.get("workflow_revision"))
             except ProviderConfigurationException:
                 self.logger.exception(
                     "Provider configuration is invalid",
@@ -646,6 +649,36 @@ class WorkflowScheduler:
             extra={"current_number_of_workflows": len(self.futures)},
         )
 
+    def _handle_incident_automation(self):
+        from keep.api.core import db
+        from keep.api.core.incident_configuration import configuration_tables_exist
+        from keep.api.core.incident_automation import IncidentAutomationWorker
+        from keep.api.models.db.incident_configuration import IncidentConfiguration
+        from sqlmodel import Session, select
+        if not configuration_tables_exist(db.engine) or time.monotonic() < self._automation_next_scan:
+            return
+        with Session(db.engine) as session:
+            snapshots = session.exec(select(IncidentConfiguration.snapshot).where(IncidentConfiguration.digest.isnot(None))).all()
+        if not snapshots:
+            return
+        interval = min(item["bundle"]["dispatch"]["scan_interval_seconds"] for item in snapshots)
+        batch = min(item["bundle"]["dispatch"]["batch_size"] for item in snapshots)
+        self._automation_next_scan = time.monotonic() + interval
+        worker = IncidentAutomationWorker(db.engine)
+        now = datetime.utcnow()
+        worker.run_once(now=now, execute=False)
+        available = max(0, min(batch, self.MAX_WORKERS - len(self.futures) - 1))
+        submitted = 0
+        for operation_id in worker.due_operations(now, batch):
+            if submitted >= available:
+                break
+            operation = worker.claim(operation_id, now)
+            if operation:
+                future = self.executor.submit(worker.execute, operation, now)
+                self.futures.add(future)
+                future.add_done_callback(self.futures.discard)
+                submitted += 1
+
     def _start(self):
         RUN_TIMEOUT_CHECKS_EVERY = 100
         self.logger.info("Starting workflows scheduler")
@@ -660,6 +693,7 @@ class WorkflowScheduler:
             try:
                 self._handle_interval_workflows()
                 self._handle_event_workflows()
+                self._handle_incident_automation()
                 if runs % RUN_TIMEOUT_CHECKS_EVERY == 0:
                     self._timeout_workflows()
             except Exception:

@@ -1,0 +1,21 @@
+ruleName: storage
+sqlQuery:
+  sql: family == "storage" && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+    && has(labels.node)) && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+    && !(has(labels.instance) && !alertname.startsWith("Longhorn"))
+  params: {}
+celQuery: family == "storage" && !(alertname.startsWith("Longhorn") && !alertname.endsWith("Request")
+  && has(labels.node)) && !(has(labels.persistentvolumeclaim) && has(labels.namespace))
+  && !(has(labels.instance) && !alertname.startsWith("Longhorn"))
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- alertname
+- svc
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · {{ alert.svc }}: {{ alert.alertname }}'
+requireApprove: false
+threshold: 1

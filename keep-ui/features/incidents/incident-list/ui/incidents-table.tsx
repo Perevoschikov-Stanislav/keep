@@ -1,3 +1,4 @@
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 import { Badge, Card, Subtitle, Title } from "@tremor/react";
 import {
   ExpandedState,
@@ -19,6 +20,8 @@ import { ManualRunWorkflowModal } from "@/features/workflows/manual-run-workflow
 import { Button, Link } from "@/components/ui";
 import { MergeIncidentsModal } from "@/features/incidents/merge-incidents";
 import { IncidentDropdownMenu } from "./incident-dropdown-menu";
+import { SilenceBadge } from "@/features/silences/silence-badge";
+import { SilenceModal, UnsilenceModal } from "@/features/silences/silence-modal";
 import clsx from "clsx";
 import { IncidentChangeStatusSelect } from "features/incidents/change-incident-status";
 import { useIncidentActions } from "@/entities/incidents/model";
@@ -35,6 +38,7 @@ import { GenerateReportModal } from "./incidents-report";
 import { DocumentChartBarIcon } from "@heroicons/react/24/outline";
 import { FormattedContent } from "@/shared/ui/FormattedContent/FormattedContent";
 import { Pagination, PaginationState } from "@/features/filter/pagination";
+import { useConfig } from "@/utils/hooks/useConfig";
 
 function SelectedRowActions({
   selectedRowIds,
@@ -47,6 +51,7 @@ function SelectedRowActions({
   onDelete: () => void;
   onGenerateReport: () => void;
 }) {
+  const { can } = useUserPermissions();
   return (
     <div className="w-full flex justify-between">
       <div>
@@ -72,7 +77,7 @@ function SelectedRowActions({
           color="orange"
           variant="primary"
           size="md"
-          disabled={selectedRowIds.length < 2}
+          disabled={selectedRowIds.length < 2 || !can("delete:incident")}
           onClick={onMergeInitiated}
         >
           Merge
@@ -81,7 +86,7 @@ function SelectedRowActions({
           color="red"
           variant="primary"
           size="md"
-          disabled={!selectedRowIds.length}
+          disabled={!selectedRowIds.length || !can("delete:incident")}
           onClick={onDelete}
         >
           Delete
@@ -103,6 +108,56 @@ interface Props {
   editCallback: (rule: IncidentDto) => void;
 }
 
+function getIncidentCluster(incident: IncidentDto): string {
+  if (incident.normalized) return incident.normalized.cluster ?? "-";
+  if (incident.enrichments?.cluster) return String(incident.enrichments.cluster);
+  if (incident.enrichments?.["alert.cluster"]) return String(incident.enrichments["alert.cluster"]);
+  if (incident.rule_fingerprint) {
+    const parts = incident.rule_fingerprint.split(",");
+    if (parts.length >= 2 && parts[1]) {
+      return parts[1].trim();
+    }
+  }
+  if (incident.user_generated_name) {
+    const parts = incident.user_generated_name.split("·");
+    if (parts.length >= 2 && parts[1]) {
+      return parts[1].trim();
+    }
+  }
+  return "-";
+}
+
+function getIncidentZone(incident: IncidentDto): string {
+  if (incident.enrichments?.zone) return String(incident.enrichments.zone);
+  if (incident.enrichments?.["alert.zone"]) return String(incident.enrichments["alert.zone"]);
+  if (incident.rule_fingerprint) {
+    const parts = incident.rule_fingerprint.split(",");
+    if (parts.length >= 1 && parts[0]) {
+      return parts[0].trim();
+    }
+  }
+  if (incident.user_generated_name) {
+    const parts = incident.user_generated_name.split("·");
+    if (parts.length >= 1 && parts[0]) {
+      return parts[0].trim();
+    }
+  }
+  return "-";
+}
+
+function getIncidentNamespace(incident: IncidentDto): string {
+  if (incident.normalized) return incident.normalized.namespace ?? "-";
+  if (incident.enrichments?.namespace) return String(incident.enrichments.namespace);
+  if (incident.enrichments?.["alert.namespace"]) return String(incident.enrichments["alert.namespace"]);
+  if (incident.rule_fingerprint) {
+    const parts = incident.rule_fingerprint.split(",");
+    if (parts.length >= 3 && parts[2]) {
+      return parts[2].trim();
+    }
+  }
+  return "-";
+}
+
 export default function IncidentsTable({
   incidents: incidents,
   filterCel,
@@ -112,6 +167,7 @@ export default function IncidentsTable({
   setSorting,
   editCallback,
 }: Props) {
+  const { data: config } = useConfig();
   const { bulkDeleteIncidents } = useIncidentActions();
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
@@ -119,9 +175,13 @@ export default function IncidentsTable({
     useState(false);
   const [runWorkflowModalIncident, setRunWorkflowModalIncident] =
     useState<IncidentDto | null>();
+  const [silenceModalIncident, setSilenceModalIncident] =
+    useState<IncidentDto | null>(null);
+  const [unsilenceModalIncident, setUnsilenceModalIncident] =
+    useState<IncidentDto | null>(null);
 
-  const columns = [
-    columnHelper.display({
+  const allColumnsMap: Record<string, ColumnDef<IncidentDto, any>> = {
+    severity: columnHelper.display({
       id: "severity",
       header: () => <></>,
       cell: ({ row }) => (
@@ -137,7 +197,7 @@ export default function IncidentsTable({
         thClassName: "p-0",
       },
     }),
-    columnHelper.display({
+    selected: columnHelper.display({
       id: "selected",
       minSize: 32,
       maxSize: 32,
@@ -168,17 +228,19 @@ export default function IncidentsTable({
         />
       ),
     }),
-    columnHelper.display({
+    status: columnHelper.display({
       id: "status",
       header: "Status",
       cell: ({ row }) => (
         <IncidentChangeStatusSelect
           incidentId={row.original.id}
+          teamId={row.original.team_id}
           value={row.original.status}
+          expectedRevision={row.original.lifecycle?.revision ?? 0}
         />
       ),
     }),
-    columnHelper.display({
+    name: columnHelper.display({
       id: "name",
       header: "Incident",
       cell: ({ row }) => {
@@ -186,13 +248,18 @@ export default function IncidentsTable({
           row.original.user_summary || row.original.generated_summary;
         return (
           <div className="min-w-32 lg:min-w-64">
-            <Link
-              href={`/incidents/${row.original.id}/alerts`}
-              className="text-pretty"
-            >
-              {getIncidentName(row.original)}
-            </Link>
-            {summary ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Link
+                href={`/incidents/${row.original.id}/alerts`}
+                className="text-pretty"
+              >
+                {getIncidentName(row.original)}
+              </Link>
+              <SilenceBadge metadata={row.original.silence} isIncident={true} />
+            </div>
+            {summary && row.original.presentation && !row.original.user_summary ? (
+              <p className="line-clamp-2 text-sm text-gray-500">{summary}</p>
+            ) : summary ? (
               <FormattedContent
                 content={summary}
                 format="html"
@@ -207,11 +274,35 @@ export default function IncidentsTable({
         tdClassName: "overflow-hidden",
       },
     }),
-    columnHelper.accessor("alerts_count", {
+    cluster: columnHelper.display({
+      id: "cluster",
+      header: "Cluster",
+      cell: ({ row }) => {
+        const cluster = getIncidentCluster(row.original);
+        return cluster !== "-" ? <Badge color="gray">{cluster}</Badge> : <span>-</span>;
+      },
+    }),
+    namespace: columnHelper.display({
+      id: "namespace",
+      header: "Namespace",
+      cell: ({ row }) => {
+        const namespace = getIncidentNamespace(row.original);
+        return namespace !== "-" ? <Badge color="gray">{namespace}</Badge> : <span>-</span>;
+      },
+    }),
+    zone: columnHelper.display({
+      id: "zone",
+      header: "Zone",
+      cell: ({ row }) => {
+        const zone = getIncidentZone(row.original);
+        return zone !== "-" ? <Badge color="gray">{zone}</Badge> : <span>-</span>;
+      },
+    }),
+    alerts_count: columnHelper.accessor("alerts_count", {
       id: "alerts_count",
       header: "Alerts",
     }),
-    columnHelper.display({
+    alert_sources: columnHelper.display({
       id: "alert_sources",
       header: "Sources",
       cell: ({ row }) =>
@@ -232,7 +323,7 @@ export default function IncidentsTable({
           />
         )),
     }),
-    columnHelper.display({
+    services: columnHelper.display({
       id: "services",
       header: "Involved Services",
       cell: ({ row }) => {
@@ -257,19 +348,19 @@ export default function IncidentsTable({
         );
       },
     }),
-    columnHelper.display({
+    assignee: columnHelper.display({
       id: "assignee",
       header: "Assignee",
       cell: ({ row }) => (
         <UserStatefulAvatar email={row.original.assignee} size="xs" />
       ),
     }),
-    columnHelper.accessor("creation_time", {
+    creation_time: columnHelper.accessor("creation_time", {
       id: "creation_time",
       header: "Created At",
       cell: ({ row }) => <DateTimeField date={row.original.creation_time} />,
     }),
-    columnHelper.display({
+    actions: columnHelper.display({
       id: "actions",
       header: "",
       cell: ({ row }) => (
@@ -278,11 +369,31 @@ export default function IncidentsTable({
             incident={row.original}
             handleEdit={editCallback}
             handleRunWorkflow={() => setRunWorkflowModalIncident(row.original)}
+            handleSilence={(inc) => setSilenceModalIncident(inc)}
+            handleUnsilence={(inc) => setUnsilenceModalIncident(inc)}
           />
         </div>
       ),
     }),
-  ] as ColumnDef<IncidentDto>[];
+  };
+
+  const configuredColumns = config?.INCIDENT_TABLE_COLUMNS || [
+    "severity",
+    "selected",
+    "status",
+    "name",
+    "cluster",
+    "alerts_count",
+    "alert_sources",
+    "creation_time",
+    "actions",
+  ];
+
+  const columns = React.useMemo(() => {
+    return configuredColumns
+      .map((colId) => allColumnsMap[colId])
+      .filter(Boolean) as ColumnDef<IncidentDto, any>[];
+  }, [configuredColumns, editCallback]);
 
   const table: Table<IncidentDto> = useReactTable({
     columns,
@@ -402,6 +513,24 @@ export default function IncidentsTable({
         <GenerateReportModal
           filterCel={filterCel}
           onClose={() => setIsGenerateReportModalOpen(false)}
+        />
+      )}
+      {silenceModalIncident && (
+        <SilenceModal
+          isOpen={true}
+          onClose={() => setSilenceModalIncident(null)}
+          incident={silenceModalIncident}
+          onSuccess={() => setSilenceModalIncident(null)}
+        />
+      )}
+      {unsilenceModalIncident && unsilenceModalIncident.silence?.reasons && (
+        <UnsilenceModal
+          isOpen={true}
+          onClose={() => setUnsilenceModalIncident(null)}
+          targetName={getIncidentName(unsilenceModalIncident)}
+          reasons={unsilenceModalIncident.silence.reasons}
+          teamId={unsilenceModalIncident.team_id ?? null}
+          onSuccess={() => setUnsilenceModalIncident(null)}
         />
       )}
     </>

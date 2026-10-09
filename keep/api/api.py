@@ -25,11 +25,12 @@ from starlette_context.middleware import RawContextMiddleware
 from keep.api.arq_pool import get_pool
 import keep.api.logging
 import keep.api.observability
-from keep.api.tasks import process_watcher_task
+from keep.api.tasks import process_silences_task, process_watcher_task
 import keep.api.utils.import_ee
 from keep.api.core.config import config
 from keep.api.core.db import dispose_session
 from keep.api.core.dependencies import SINGLE_TENANT_UUID
+from keep.api.core.incident_configuration import IncidentConfigurationMiddleware
 from keep.api.core.limiter import limiter
 from keep.api.logging import CONFIG as logging_config
 from keep.api.middlewares import LoggingMiddleware
@@ -44,6 +45,8 @@ from keep.api.routes import (
     cel,
     healthcheck,
     incidents,
+    incident_policies,
+    incident_notifications,
     maintenance,
     mapping,
     metrics,
@@ -53,6 +56,8 @@ from keep.api.routes import (
     pusher,
     rules,
     settings,
+    silences,
+    silence_integrations,
     status,
     tags,
     topology,
@@ -60,7 +65,7 @@ from keep.api.routes import (
     workflows,
 )
 from keep.api.routes.auth import groups as auth_groups
-from keep.api.routes.auth import permissions, roles, users
+from keep.api.routes.auth import permissions, roles, teams, users
 from keep.event_subscriber.event_subscriber import EventSubscriber
 from keep.identitymanager.identitymanagerfactory import (
     IdentityManagerFactory,
@@ -122,11 +127,6 @@ async def startup():
     This runs for every worker on startup.
     Read more about lifespan here: https://fastapi.tiangolo.com/advanced/events/#lifespan
     """
-    logger.info("Disope existing DB connections")
-    # psycopg2.DatabaseError: error with status PGRES_TUPLES_OK and no message from the libpq
-    # https://stackoverflow.com/questions/43944787/sqlalchemy-celery-with-scoped-session-error/54751019#54751019
-    dispose_session()
-
     logger.info("Starting the services")
 
     # Start the scheduler
@@ -234,13 +234,35 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(check_pending_tasks(background_tasks))
 
     # Startup
+    # Configuration reads must use this worker's pool, before services start.
+    dispose_session()
+    process_silences_task.get_silence_integrations()
     await startup()
+    silence_task = asyncio.create_task(process_silences_task.async_process_silences())
+    from keep.api.tasks import process_alertmanager_reconciliation_task
+    am_task = None
+    if process_alertmanager_reconciliation_task.get_reconciler() is not None:
+        am_task = asyncio.create_task(
+            process_alertmanager_reconciliation_task.async_process_alertmanager_reconciliation()
+        )
 
     # yield the background tasks, this is available for the app to use in request context
-    yield {"background_tasks": background_tasks}
-
-    # Shutdown
-    await shutdown()
+    try:
+        yield {"background_tasks": background_tasks}
+    finally:
+        silence_task.cancel()
+        if am_task:
+            am_task.cancel()
+        try:
+            await silence_task
+        except asyncio.CancelledError:
+            pass
+        if am_task:
+            try:
+                await am_task
+            except asyncio.CancelledError:
+                pass
+        await shutdown()
 
 
 def get_app(
@@ -277,6 +299,7 @@ def get_app(
         return {"message": app.description, "version": KEEP_VERSION}
 
     app.add_middleware(RawContextMiddleware, plugins=(plugins.RequestIdPlugin(),))
+    app.add_middleware(IncidentConfigurationMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(
         GZipMiddleware, minimum_size=30 * 1024 * 1024
@@ -294,6 +317,7 @@ def get_app(
     app.include_router(healthcheck.router, prefix="/healthcheck", tags=["healthcheck"])
     app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
     app.include_router(incidents.router, prefix="/incidents", tags=["incidents"])
+    app.include_router(incident_policies.router, prefix="/settings/incident-policies", tags=["settings"])
     app.include_router(settings.router, prefix="/settings", tags=["settings"])
     app.include_router(
         workflows.router, prefix="/workflows", tags=["workflows", "alerts"]
@@ -313,6 +337,7 @@ def get_app(
         permissions.router, prefix="/auth/permissions", tags=["auth", "permissions"]
     )
     app.include_router(roles.router, prefix="/auth/roles", tags=["auth", "roles"])
+    app.include_router(teams.router, prefix="/auth/teams", tags=["auth", "teams"])
     app.include_router(users.router, prefix="/auth/users", tags=["auth", "users"])
     app.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
     app.include_router(
@@ -321,6 +346,9 @@ def get_app(
     app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
     app.include_router(tags.router, prefix="/tags", tags=["tags"])
     app.include_router(maintenance.router, prefix="/maintenance", tags=["maintenance"])
+    app.include_router(silences.router, prefix="/silences", tags=["silences"])
+    app.include_router(silence_integrations.router, prefix="/integrations/silences", tags=["silences integrations"])
+    app.include_router(incident_notifications.router, prefix="/integrations/notifications", tags=["notifications integrations"])
     app.include_router(topology.router, prefix="/topology", tags=["topology"])
     app.include_router(
         deduplications.router, prefix="/deduplications", tags=["deduplications"]
@@ -442,4 +470,3 @@ def run(app: FastAPI):
         workers=config("KEEP_WORKERS", default=None, cast=int),
         limit_concurrency=config("KEEP_LIMIT_CONCURRENCY", default=None, cast=int),
     )
-

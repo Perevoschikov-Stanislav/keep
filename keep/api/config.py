@@ -30,16 +30,40 @@ def provision_resources():
         logger.info("Provisioning providers and workflows")
         ProvidersService.provision_providers(SINGLE_TENANT_UUID)
         logger.info("Providers loaded successfully")
-        WorkflowStore.provision_workflows(SINGLE_TENANT_UUID)
-        logger.info("Workflows provisioned successfully")
+        from keep.api.bl.incident_provisioning import Candidate, IncidentProvisioning
+        from keep.api.core import db
+        from keep.api.core.incident_contract import ContractError
+        from sqlmodel import Session
+
+        service = IncidentProvisioning(SINGLE_TENANT_UUID)
+        bundle_path = os.environ.get("KEEP_INCIDENT_POLICIES_CONFIG_FILE")
+        managed = service.status()["active_digest"] is not None
+        if bundle_path:
+            try:
+                candidate = Candidate.from_file(bundle_path, SINGLE_TENANT_UUID)
+                preview = service.preview(candidate)
+                service.apply(candidate, expected_active_digest=preview["active_digest"],
+                              expected_candidate_digest=preview["candidate_digest"],
+                              expected_preview_digest=preview["preview_digest"], actor="iac-startup")
+                managed = True
+                logger.info("Incident configuration active: generation %s", service.status()["generation"])
+            except ContractError as error:
+                logger.error("Incident configuration retained: %s", error)
+                # Do not replace the failed bundle with independently applied legacy input.
+                managed = True
+        if not managed:
+            try:
+                with Session(db.engine) as session, session.begin():
+                    WorkflowStore.provision_workflows(SINGLE_TENANT_UUID, session=session)
+                    provision_mapping_rules_from_env(SINGLE_TENANT_UUID, session=session)
+                logger.info("Legacy workflows and mappings provisioned successfully")
+            except (ValueError, OSError):
+                logger.error("Legacy configuration invalid; workflows and mappings retained")
         provision_dashboards(SINGLE_TENANT_UUID)
         logger.info("Dashboards provisioned successfully")
         logger.info("Provisioning deduplication rules")
         provision_deduplication_rules_from_env(SINGLE_TENANT_UUID)
         logger.info("Deduplication rules provisioned successfully")
-        logger.info("Provisioning mapping rules")
-        provision_mapping_rules_from_env(SINGLE_TENANT_UUID)
-        logger.info("Mapping rules provisioned successfully")
     else:
         logger.info("Provisioning resources is disabled")
 
@@ -49,6 +73,8 @@ def on_starting(server=None):
     logger.info("Keep server starting")
 
     migrate_db()
+    from keep.api.core.incident_configuration import reset_configuration_cache
+    reset_configuration_cache()
 
     # Load this early and use preloading
     # https://www.joelsleppy.com/blog/gunicorn-application-preloading/

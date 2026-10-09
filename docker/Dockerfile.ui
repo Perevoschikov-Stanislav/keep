@@ -5,6 +5,8 @@ FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
+ENV TMPDIR=/app/.build-tmp
+RUN mkdir -p "$TMPDIR"
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json ./
@@ -15,7 +17,9 @@ RUN npm ci  --noproxy registry.npmjs.org --maxsockets 1
 FROM base AS builder
 ARG KEEP_INCLUDE_SOURCES=false
 ENV KEEP_INCLUDE_SOURCES=${KEEP_INCLUDE_SOURCES}
+ENV TMPDIR=/app/.build-tmp
 WORKDIR /app
+RUN mkdir -p "$TMPDIR"
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -23,6 +27,7 @@ COPY . .
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV SENTRY_DISABLED true
 
 # If using npm comment out above and use below instead
 ENV API_URL http://localhost:8080
@@ -67,12 +72,12 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT 3000
-ENV POSTHOG_KEY=phc_muk9qE3TfZsX3SZ9XxX52kCGJBclrjhkP9JxAQcm1PZ
-ENV POSTHOG_HOST=https://ingest.keephq.dev
+ENV POSTHOG_DISABLED=true
+ENV SENTRY_DISABLED=true
+ENV KEEP_OSS_ONLY=true
 ENV PUSHER_HOST=localhost
 ENV PUSHER_PORT=6001
 ENV PUSHER_APP_KEY=keepappkey
-ENV NEXT_PUBLIC_SENTRY_DSN=https://0d4d59e3105ffe8afa27dcb95a222009@o4505515398922240.ingest.us.sentry.io/4508258058764288
 
 
 ENTRYPOINT ["/app/entrypoint.sh"]

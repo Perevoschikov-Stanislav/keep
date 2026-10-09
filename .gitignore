@@ -208,6 +208,8 @@ playwright_dump_*.html
 playwright_dump_*.png
 playwright_dump_*.txt
 playwright_dump_*.json
+.lab-tmp/
+.lab-work/
 
 ee/experimental/ai_temp/*
 ,e!ee/experimental/ai_temp/.gitkeep
@@ -228,3 +230,13 @@ grafana/*
 keep/providers/grafana_provider/grafana/png/*
 topology.sh
 posthog.py
+
+/scratch/
+
+/docs/local-tasks/
+
+/config/*.local/
+
+/lab/*.local.*
+
+/images.env

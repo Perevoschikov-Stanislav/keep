@@ -1,11 +1,10 @@
-import Maintenance from "./maintenance"; // Adjust the import based on the folder structure
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <Maintenance />;
+  redirect("/silences");
 }
 
 export const metadata = {
-  title: "Keep - Maintenance Rules Management",
-  description:
-    "Manage maintenance windows to ignore alerts during scheduled downtimes.",
+  title: "Keep - Silences",
+  description: "Silence management registry",
 };

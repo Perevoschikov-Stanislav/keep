@@ -13,8 +13,6 @@ from fastapi import HTTPException
 from keep.api.core.db import (
     add_or_update_workflow,
     delete_workflow,
-    delete_workflow_by_provisioned_file,
-    get_all_provisioned_workflows,
     get_all_workflows,
     get_all_workflows_yamls,
     get_workflow_by_id,
@@ -25,6 +23,7 @@ from keep.api.core.workflows import get_workflows_with_last_executions_v2
 from keep.api.models.db.workflow import Workflow as WorkflowModel
 from keep.api.models.query import QueryDto
 from keep.api.models.workflow import PreparsedWorkflowDTO, ProviderDTO
+from keep.api.core.incident_configuration import configured_operation, active_configuration
 from keep.functions import cyaml
 from keep.parser.parser import Parser
 from keep.providers.providers_factory import ProvidersFactory
@@ -110,10 +109,17 @@ class WorkflowStore:
             raise HTTPException(
                 status_code=404, detail=f"Workflow {workflow_id} not found"
             )
+        from sqlmodel import Session
+        from keep.api.core import db
+        from keep.api.core.incident_configuration import require_unmanaged
+        with Session(db.engine) as session:
+            require_unmanaged(session, tenant_id, "workflows", workflow_id)
         if workflow.provisioned:
             raise HTTPException(403, detail="Cannot delete a provisioned workflow")
         try:
             delete_workflow(tenant_id, workflow_id)
+        except HTTPException:
+            raise
         except Exception as e:
             self.logger.exception(f"Error deleting workflow {workflow_id}: {str(e)}")
             raise HTTPException(
@@ -149,13 +155,16 @@ class WorkflowStore:
             )
         return self.format_workflow_yaml(workflow.workflow_raw)
 
-    def get_workflow(self, tenant_id: str, workflow_id: str) -> Workflow:
+    @configured_operation
+    def get_workflow(self, tenant_id: str, workflow_id: str, expected_revision=None) -> Workflow:
         workflow = get_workflow_by_id(tenant_id, workflow_id)
         if not workflow:
             raise HTTPException(
                 status_code=404,
                 detail=f"Workflow {workflow_id} not found",
             )
+        if expected_revision is not None and workflow.revision != expected_revision:
+            raise HTTPException(409, detail="Workflow changed after scheduling")
         workflow_yaml = cyaml.safe_load(workflow.workflow_raw)
         workflow = self.parser.parse(
             tenant_id,
@@ -170,6 +179,8 @@ class WorkflowStore:
                 detail=f"More than one workflow with id {workflow_id} found",
             )
         elif workflow:
+            snapshot = active_configuration(tenant_id)
+            workflow[0].context_manager.configuration_digest = snapshot["digest"] if snapshot else None
             return workflow[0]
         else:
             raise HTTPException(
@@ -339,181 +350,9 @@ class WorkflowStore:
         )
 
     @staticmethod
-    def provision_workflows(
-        tenant_id: str,
-    ) -> list[Workflow]:
-        """
-        Provision workflows from a directory or env variable.
-
-        Args:
-            tenant_id (str): The tenant ID.
-
-        Returns:
-            list[Workflow]: A list of provisioned Workflow objects.
-        """
-        logger = logging.getLogger(__name__)
-        provisioned_workflows = []
-
-        provisioned_workflows_dir = os.environ.get("KEEP_WORKFLOWS_DIRECTORY")
-        provisioned_workflow_yaml = os.environ.get("KEEP_WORKFLOW")
-
-        # Get all existing provisioned workflows
-        logger.info("Getting all already provisioned workflows")
-        provisioned_workflows = get_all_provisioned_workflows(tenant_id)
-        logger.info(f"Found {len(provisioned_workflows)} provisioned workflows")
-
-        if not (provisioned_workflows_dir or provisioned_workflow_yaml):
-            logger.info("No workflows for provisioning found")
-
-            if provisioned_workflows:
-                logger.info("Found existing provisioned workflows, deleting them")
-                for workflow in provisioned_workflows:
-                    logger.info(f"Deprovisioning workflow {workflow.id}")
-                    delete_workflow(tenant_id, workflow.id)
-                    logger.info(f"Workflow {workflow.id} deprovisioned successfully")
-            return []
-
-        if (
-            provisioned_workflows_dir is not None
-            and provisioned_workflow_yaml is not None
-        ):
-            raise Exception(
-                "Workflows provisioned via env var and directory at the same time. Please choose one."
-            )
-
-        if provisioned_workflows_dir is not None and not os.path.isdir(
-            provisioned_workflows_dir
-        ):
-            raise FileNotFoundError(
-                f"Directory {provisioned_workflows_dir} does not exist"
-            )
-
-        ### Provisioning from env var
-        if provisioned_workflow_yaml is not None:
-            logger.info("Provisioning workflow from env var")
-            pre_parsed_workflow = None
-            try:
-                workflow_yaml = cyaml.safe_load(provisioned_workflow_yaml)
-                pre_parsed_workflow = WorkflowStore.pre_parse_workflow_yaml(
-                    workflow_yaml
-                )
-            except ValueError as e:
-                logger.error(
-                    "Error provisioning workflow from env var: yaml is invalid",
-                    extra={"exception": e},
-                )
-
-            try:
-                # Un-provisioning other workflows.
-                for workflow in provisioned_workflows:
-                    if (
-                        not pre_parsed_workflow
-                        or not workflow.name == pre_parsed_workflow.name
-                    ):
-                        if not pre_parsed_workflow:
-                            logger.info(
-                                f"Deprovisioning workflow {workflow.id} as no workflows to provision"
-                            )
-                        else:
-                            logger.info(
-                                f"Deprovisioning workflow {workflow.id} as its id doesn't match the provisioned workflow provided in the env"
-                            )
-                        delete_workflow(tenant_id, workflow.id)
-                        logger.info(
-                            f"Workflow {workflow.id} deprovisioned successfully"
-                        )
-
-                if not pre_parsed_workflow:
-                    logger.info("No workflows to provision")
-                    return []
-
-                logger.info(
-                    f"Provisioning workflow {pre_parsed_workflow.id} from env var"
-                )
-
-                add_or_update_workflow(
-                    id=pre_parsed_workflow.id,
-                    name=pre_parsed_workflow.name,
-                    tenant_id=tenant_id,
-                    description=pre_parsed_workflow.description,
-                    created_by="system",
-                    updated_by="system",
-                    interval=pre_parsed_workflow.interval,
-                    is_disabled=pre_parsed_workflow.disabled,
-                    workflow_raw=cyaml.dump(workflow_yaml, width=99999),
-                    provisioned=True,
-                    provisioned_file=None,
-                )
-                provisioned_workflows.append(workflow_yaml)
-                logger.info("Workflow provisioned successfully")
-            except Exception as e:
-                logger.error(
-                    "Error provisioning workflow from env var",
-                    extra={"exception": e},
-                )
-
-        ### Provisioning from the directory
-        if provisioned_workflows_dir is not None:
-
-            logger.info(
-                f"Provisioning workflows from directory {provisioned_workflows_dir}"
-            )
-
-            # Check for workflows that are no longer in the directory or outside the workflows_dir and delete them
-            for workflow in provisioned_workflows:
-                if (
-                    workflow.provisioned_file is None
-                    or not os.path.exists(workflow.provisioned_file)
-                    or not provisioned_workflows_dir.endswith(
-                        os.path.commonpath(
-                            [provisioned_workflows_dir, workflow.provisioned_file]
-                        )
-                    )
-                ):
-                    logger.info(
-                        f"Deprovisioning workflow {workflow.id} as its file no longer exists or is outside the workflows directory"
-                    )
-                    delete_workflow_by_provisioned_file(
-                        tenant_id, workflow.provisioned_file
-                    )
-                    logger.info(f"Workflow {workflow.id} deprovisioned successfully")
-
-            # Provision new workflows from the directory
-            for file in os.listdir(provisioned_workflows_dir):
-                if file.endswith((".yaml", ".yml")):
-                    logger.info(f"Provisioning workflow from {file}")
-                    workflow_path = os.path.join(provisioned_workflows_dir, file)
-
-                    try:
-                        with open(workflow_path, "r") as yaml_file:
-                            workflow_yaml = cyaml.safe_load(yaml_file.read())
-                            pre_parsed_workflow = WorkflowStore.pre_parse_workflow_yaml(
-                                workflow_yaml
-                            )
-                        add_or_update_workflow(
-                            id=pre_parsed_workflow.id,
-                            name=pre_parsed_workflow.name,
-                            tenant_id=tenant_id,
-                            description=pre_parsed_workflow.description,
-                            created_by="system",
-                            updated_by="system",
-                            interval=pre_parsed_workflow.interval,
-                            is_disabled=pre_parsed_workflow.disabled,
-                            workflow_raw=cyaml.dump(workflow_yaml, width=99999),
-                            provisioned=True,
-                            provisioned_file=workflow_path,
-                        )
-                        provisioned_workflows.append(workflow_yaml)
-                        logger.info(f"Workflow from {file} provisioned successfully")
-                    except Exception as e:
-                        logger.error(
-                            f"Error provisioning workflow from {file}",
-                            extra={"exception": e},
-                        )
-                else:
-                    logger.info(f"Skipping file {file} as it is not a YAML file")
-
-        return provisioned_workflows
+    def provision_workflows(tenant_id: str, session=None) -> list[Workflow]:
+        from keep.api.bl.legacy_workflows_provisioning import provision_workflows_from_env
+        return provision_workflows_from_env(tenant_id, session=session)
 
     def _read_workflow_from_stream(self, stream) -> dict:
         """

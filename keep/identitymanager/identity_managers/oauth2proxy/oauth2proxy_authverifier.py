@@ -14,6 +14,7 @@ from keep.api.core.dependencies import SINGLE_TENANT_UUID
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.authverifierbase import AuthVerifierBase
 from keep.identitymanager.rbac import get_role_by_role_name
+from keep.identitymanager.team_policy import get_team_policy
 
 
 class Oauth2proxyAuthVerifier(AuthVerifierBase):
@@ -30,16 +31,17 @@ class Oauth2proxyAuthVerifier(AuthVerifierBase):
         self.auto_create_user = config(
             "KEEP_OAUTH2_PROXY_AUTO_CREATE_USER", default=True
         )
-        self.role_mappings = {}
+        self.legacy_role_mappings = {}
         for env_var, target_role in [
             ("KEEP_OAUTH2_PROXY_ADMIN_ROLES", "admin"),
+            ("KEEP_OAUTH2_PROXY_RESPONDER_ROLES", "responder"),
+            ("KEEP_OAUTH2_PROXY_VIEWER_ROLES", "viewer"),
             ("KEEP_OAUTH2_PROXY_NOC_ROLES", "noc"),
             ("KEEP_OAUTH2_PROXY_WEBHOOK_ROLES", "webhook"),
         ]:
-            roles_str = config(env_var, default="")
-            roles = [role.strip() for role in roles_str.split(",") if role.strip()]
-            for role in roles:
-                self.role_mappings[role] = target_role
+            for group in config(env_var, default="").split(","):
+                if group.strip():
+                    self.legacy_role_mappings.setdefault(group.strip(), set()).add(target_role)
         self.logger.info("Oauth2proxy Auth Verifier initialized")
 
     def authenticate(
@@ -67,6 +69,8 @@ class Oauth2proxyAuthVerifier(AuthVerifierBase):
                         raise HTTPException(
                             status_code=401, detail="Invalid authentication credentials"
                         )
+            except HTTPException:
+                raise
             except Exception:
                 # If we fail to validate the API key, we need to try to authenticate with the user and role headers
                 # We will either way return a 401 status code if it fails, so we don't need to handle it here
@@ -101,28 +105,35 @@ class Oauth2proxyAuthVerifier(AuthVerifierBase):
         else:
             roles = [role]
 
+        # Dependencies live for the process lifetime; policy belongs to this operation.
+        team_policy = get_team_policy()
+        role_mappings = self.legacy_role_mappings
+        if team_policy is not None:
+            role_mappings = {}
+            for target_role, groups in team_policy.role_groups.items():
+                for group in groups:
+                    role_mappings.setdefault(group, set()).add(target_role)
+
         # Define the priority order of roles
-        role_priority = ["admin", "noc", "webhook"]
+        role_priority = ["admin", "responder", "viewer", "noc", "webhook"]
 
         mapped_role = None
         for priority_role in role_priority:
             self.logger.debug(f"Checking for role {priority_role}")
             for role in roles:
                 self.logger.debug(f"Checking for role {role}")
-                # map the role if its a mapped one, or just use the role
-                mapped_role_name = self.role_mappings.get(role, role)
-                self.logger.debug(f"Checking for mapped role {mapped_role_name}")
-                if mapped_role_name == priority_role:
+                mapped_roles = role_mappings.get(role, set())
+                self.logger.debug(f"Checking mapped roles {mapped_roles}")
+                if priority_role in mapped_roles:
                     try:
-                        self.logger.debug(f"Getting role {mapped_role_name}")
-                        mapped_role = get_role_by_role_name(mapped_role_name)
-                        self.logger.debug(f"Role {mapped_role_name} found")
+                        mapped_role = get_role_by_role_name(priority_role)
+                        self.logger.debug(f"Role {priority_role} found")
                         break
                     except HTTPException:
-                        self.logger.debug(f"Role {mapped_role_name} not found")
+                        self.logger.debug(f"Role {priority_role} not found")
                         continue
             if mapped_role:
-                self.logger.debug(f"Role {mapped_role_name} found")
+                self.logger.debug(f"Role {priority_role} found")
                 break
 
         # if no valid role was found, throw a 403 exception
@@ -176,4 +187,8 @@ class Oauth2proxyAuthVerifier(AuthVerifierBase):
             tenant_id=SINGLE_TENANT_UUID,
             email=user_name,
             role=mapped_role.get_name(),
+            teams=team_policy.teams_for_groups(set(roles)) if team_policy else frozenset(),
+            visible_teams=team_policy.visible_teams(
+                set(team_policy.teams_for_groups(set(roles)))
+            ) if team_policy else frozenset(),
         )

@@ -9,6 +9,7 @@ import { AlertAssociateIncidentModal } from "@/features/alerts/alert-associate-t
 import { CreateIncidentWithAIModal } from "@/features/alerts/alert-create-incident-ai";
 import { useApi } from "@/shared/lib/hooks/useApi";
 import { Table } from "@tanstack/react-table";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 
 import { useRevalidateMultiple } from "@/shared/lib/state-utils";
 import { useConfig } from "@/utils/hooks/useConfig";
@@ -55,6 +56,10 @@ export default function AlertActions({
   const selectedAlerts = table
     .getSelectedRowModel()
     .rows.map((row) => row.original);
+  const { can } = useUserPermissions();
+  const canUpdate = selectedAlerts.every((alert) => can("update:alert", alert));
+  const canSilence = selectedAlerts.every((alert) => can("write:silence", alert)) &&
+    new Set(selectedAlerts.map((alert) => alert.team_id ?? null)).size <= 1;
 
   async function addOrUpdatePreset() {
     const newPresetName = prompt("Enter new preset name");
@@ -132,6 +137,7 @@ export default function AlertActions({
         size="xs"
         color="blue"
         title="Resolve"
+        disabled={!canUpdate}
         onClick={() => {
           setModalAlert(selectedAlerts);
         }}
@@ -151,14 +157,15 @@ export default function AlertActions({
       <Button
         icon={SilencedDoorbellNotification}
         size="xs"
-        color="red"
-        title="Delete"
+        color="orange"
+        title="Silence"
+        disabled={!canSilence}
         onClick={() => {
           setDismissModalAlert?.(selectedAlerts);
           clearRowSelection();
         }}
       >
-        Dismiss {selectedAlertsFingerprints.length} alert(s)
+        Silence {selectedAlertsFingerprints.length} alert(s)
       </Button>
       <Button
         icon={PlusIcon}
@@ -166,6 +173,7 @@ export default function AlertActions({
         color="orange"
         onClick={async () => await addOrUpdatePreset()}
         tooltip="Save current filter as a view"
+        disabled={!can("write:presets")}
       >
         Create Preset
       </Button>
@@ -175,10 +183,11 @@ export default function AlertActions({
         color="orange"
         onClick={showIncidentSelector}
         tooltip="Associate events with incident"
+        disabled={!can("write:incident")}
       >
         Associate with incident
       </Button>
-      <Button
+      {config?.KEEP_OSS_ONLY === false && <Button
         icon={RocketIcon}
         size="xs"
         color="orange"
@@ -191,18 +200,18 @@ export default function AlertActions({
         disabled={!config?.OPEN_AI_API_KEY_SET}
       >
         Create incidents with AI
-      </Button>
+      </Button>}
       <AlertAssociateIncidentModal
         isOpen={isIncidentSelectorOpen}
         alerts={selectedAlerts}
         handleSuccess={handleSuccessfulAlertsAssociation}
         handleClose={hideIncidentSelector}
       />
-      <CreateIncidentWithAIModal
+      {config?.KEEP_OSS_ONLY === false && <CreateIncidentWithAIModal
         isOpen={isCreateIncidentWithAIOpen}
         alerts={selectedAlerts}
         handleClose={hideCreateIncidentWithAI}
-      />
+      />}
     </div>
   );
 }

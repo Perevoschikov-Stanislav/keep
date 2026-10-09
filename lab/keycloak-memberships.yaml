@@ -1,0 +1,8 @@
+# Desired group memberships for the lab. Credentials stay in Keycloak.
+realm: core
+users:
+  it-admin: [/keep-admin]
+  ops-l1: [/keep-ops-l1, /keep-teams/ops]
+  ops-l2: [/keep-ops-l2, /keep-teams/ops]
+  viewer: [/keep-viewer, /keep-teams/ops]
+  scanner: [/keep-scanner, /keep-teams/it]

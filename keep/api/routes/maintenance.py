@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
+from keep.api.core.config import config
 from keep.api.core.db import get_session
 from keep.api.models.db.maintenance_window import (
     MaintenanceRuleCreate,
@@ -13,6 +14,14 @@ from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
 
 router = APIRouter()
+
+
+def require_legacy_maintenance_enabled():
+    if not config("KEEP_MAINTENANCE_DESTRUCTIVE_DROP", default=True, cast=bool):
+        raise HTTPException(status_code=409, detail={
+            "code": "legacy_maintenance_disabled",
+            "message": "Create or update a Silence rule instead",
+        })
 
 
 @router.get(
@@ -35,7 +44,8 @@ def get_maintenance_rules(
 
 
 @router.post(
-    "", response_model=MaintenanceRuleRead, description="Create a new maintenance rule"
+    "", response_model=MaintenanceRuleRead, description="Create a new maintenance rule",
+    dependencies=[Depends(require_legacy_maintenance_enabled)],
 )
 def create_maintenance_rule(
     rule_dto: MaintenanceRuleCreate,
@@ -61,6 +71,7 @@ def create_maintenance_rule(
     "/{rule_id}",
     response_model=MaintenanceRuleRead,
     description="Update an existing maintenance rule",
+    dependencies=[Depends(require_legacy_maintenance_enabled)],
 )
 def update_maintenance_rule(
     rule_id: int,

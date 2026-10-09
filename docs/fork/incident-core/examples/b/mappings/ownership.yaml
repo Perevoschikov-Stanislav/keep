@@ -1,0 +1,10 @@
+name: ownership-b
+priority: 20
+type: csv
+matchers:
+- - labels.owner_team
+rows:
+- labels.owner_team: harbor
+  zone: zone-harbor
+- labels.owner_team: lumen
+  zone: zone-lumen

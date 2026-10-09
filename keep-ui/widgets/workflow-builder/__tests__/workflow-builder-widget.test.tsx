@@ -71,7 +71,7 @@ describe("WorkflowBuilderWidgetSafe", () => {
   it("should wrap WorkflowBuilderWidget with CopilotKit when OpenAI key is set", () => {
     // Mock useConfig to return OpenAI key set
     (useConfig as jest.Mock).mockReturnValue({
-      data: { OPEN_AI_API_KEY_SET: true },
+      data: { KEEP_OSS_ONLY: false, OPEN_AI_API_KEY_SET: true },
     });
 
     render(
@@ -98,5 +98,16 @@ describe("WorkflowBuilderWidgetSafe", () => {
     expect(copilotWrapper).toContainElement(
       screen.getByTestId("workflow-builder")
     );
+  });
+
+  it.each([undefined, true])("does not initialize CopilotKit in OSS mode (%s) even with a key", (ossOnly) => {
+    (useConfig as jest.Mock).mockReturnValue({
+      data: { KEEP_OSS_ONLY: ossOnly, OPEN_AI_API_KEY_SET: true },
+    });
+
+    render(<WorkflowBuilderWidgetSafe workflowRaw={mockWorkflowRaw} workflowId={mockWorkflowId} />);
+
+    expect(screen.getByTestId("workflow-builder")).toBeInTheDocument();
+    expect(screen.queryByTestId("copilot-wrapper")).not.toBeInTheDocument();
   });
 });

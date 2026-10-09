@@ -1,0 +1,20 @@
+version: 1
+visibility: team
+roles:
+  admin:
+  - /keep/roles/admin
+  responder:
+  - /keep/roles/responder
+  viewer:
+  - /keep/roles/viewer
+teams:
+- id: platform-blue
+  groups:
+  - /organization/platform-blue
+  zones:
+  - platform-blue-zone
+- id: database-green
+  groups:
+  - /organization/database-green
+  zones:
+  - database-green-zone

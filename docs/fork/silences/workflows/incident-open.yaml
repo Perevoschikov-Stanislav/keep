@@ -1,0 +1,22 @@
+# Инцидент создан → мост keep-mm (пост в Mattermost).
+# notification: true включает проверку сайленсов перед отправкой.
+workflow:
+  id: incident-open
+  name: incident-open
+  description: Новый инцидент → keep-mm (пост в Mattermost)
+  triggers:
+    - type: incident
+      events: [created]
+  actions:
+    - name: notify
+      notification: true
+      provider:
+        type: http
+        with:
+          method: POST
+          url: "${MM_BRIDGE_URL}/notify"
+          headers:
+            X-Bridge-Secret: "{{ secrets.bridge_secret }}"
+          body:
+            incident_id: "{{ incident.id }}"
+            event: created

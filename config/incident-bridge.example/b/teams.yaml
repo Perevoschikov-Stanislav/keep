@@ -1,0 +1,20 @@
+version: 1
+visibility: all
+roles:
+  admin:
+  - /keep/roles/admin
+  responder:
+  - /keep/roles/responder
+  viewer:
+  - /keep/roles/viewer
+teams:
+- id: frontend-west
+  groups:
+  - /organization/frontend-west
+  zones:
+  - frontend-west-zone
+- id: network-east
+  groups:
+  - /organization/network-east
+  zones:
+  - network-east-zone

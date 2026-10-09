@@ -1,0 +1,36 @@
+version: 1
+visibility: team
+incident_views:
+- id: ops
+  name: OPS
+  cel: team_id == 'ops'
+- id: it
+  name: IT
+  cel: team_id == 'it'
+roles:
+  admin:
+  - /keep-admin
+  responder:
+  - /keep-ops-l1
+  - /keep-ops-l2
+  - /keep-it
+  - /keep-ops
+  viewer:
+  - /keep-viewer
+  - /keep-scanner
+teams:
+- id: ops
+  groups:
+  - /keep-teams/ops
+  zones:
+  - OPS
+- id: it
+  groups:
+  - /keep-teams/it
+  zones:
+  - IT
+- id: quarantine
+  groups: []
+  zones:
+  - UNASSIGNED
+  visible_to: []

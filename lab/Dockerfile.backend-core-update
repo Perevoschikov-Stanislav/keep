@@ -1,0 +1,5 @@
+ARG KEEP_BACKEND_IMAGE=keep-backend:lab-core-20261007T132727Z
+FROM ${KEEP_BACKEND_IMAGE}
+USER root
+COPY --chown=keep:keep keep /venv/lib/python3.13/site-packages/keep
+USER keep

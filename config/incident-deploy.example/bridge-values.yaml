@@ -1,0 +1,71 @@
+image:
+  repository: registry.example.org/keepfork/keep-mm-bridge
+  tag: REPLACE_WITH_PUBLISHED_TAG
+  pullPolicy: IfNotPresent
+configuration:
+  schema_version: 1
+  tenant_id: keep
+  transport_ref: mattermost-core
+  keep_api_url: http://keep-backend:8080
+  keep_ui_url: https://keep.example.org
+  mattermost_url: https://chat.example.org
+  transport_token_ref: env:BRIDGE_TRANSPORT_TOKEN
+  service_token_ref: env:KEEP_BRIDGE_SERVICE_TOKEN
+  mattermost_token_ref: env:MM_BOT_TOKEN
+  state_db: /state/transport.db
+  timeout_seconds: 10
+  reconcile_interval_seconds: 10
+  recovery_page_size: 100
+  recovery_max_pages: 10
+  max_body_bytes: 524288
+  destinations:
+    ops-integration-customer-a-incidents:
+      team_id: ops
+      channel_id: examplechannel000000000003
+      silence_service_posts: true
+    ops-integration-customer-b-incidents:
+      team_id: ops
+      channel_id: examplechannel000000000005
+      silence_service_posts: true
+    ops-customer-a-incidents:
+      team_id: ops
+      channel_id: examplechannel000000000010
+      silence_service_posts: true
+    ops-customer-b-incidents:
+      team_id: ops
+      channel_id: examplechannel000000000006
+      silence_service_posts: true
+    ops-cloud-incidents:
+      team_id: ops
+      channel_id: examplechannel000000000009
+      silence_service_posts: true
+    ops-test-incidents-it:
+      team_id: ops
+      channel_id: examplechannel000000000002
+      silence_service_posts: true
+    it-test-incidents-it:
+      team_id: it
+      channel_id: examplechannel000000000002
+      silence_service_posts: true
+secretRefs:
+  transport:
+    name: keep-core-bridge
+    key: transport
+  service:
+    name: keep-core-bridge
+    key: service
+  mattermost:
+    name: keep-mm-bot
+    key: MM_BOT_TOKEN
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: longhorn
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+imagePullSecrets:
+- name: REPLACE_WITH_REGISTRY_SECRET

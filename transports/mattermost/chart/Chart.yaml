@@ -1,0 +1,6 @@
+apiVersion: v2
+name: keep-notification-bridge
+description: Mattermost transport for canonical Keep notifications
+type: application
+version: 0.1.0
+appVersion: transport-v1

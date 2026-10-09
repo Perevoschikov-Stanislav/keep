@@ -3,6 +3,7 @@ import { signOut as signOutClient } from "next-auth/react";
 import { AuthType } from "@/utils/authenticationType";
 import { Session } from "next-auth";
 import { InternalConfig } from "@/types/internal-config";
+import { KeepApiReadOnlyError } from "../KeepApiError";
 
 // Mock dependencies
 jest.mock("next-auth/react", () => ({
@@ -83,8 +84,8 @@ describe("ApiClient", () => {
         client.handleResponse(mockResponse, "/test-url")
       ).rejects.toThrow();
 
-      expect(locationHref).toBe("/oauth2/sign_out");
-      expect(signOutClient).not.toHaveBeenCalled();
+      expect(locationHref).toBe("/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%2F");
+      expect(signOutClient).toHaveBeenCalledWith({ redirect: false });
     });
 
     it("should call NextAuth signOut for DB auth type on 401", async () => {
@@ -157,6 +158,46 @@ describe("ApiClient", () => {
 
       // On server side, neither redirect nor signOut should be called
       expect(signOutClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("forbidden modifications", () => {
+    it.each([
+      { detail: "Insufficient permissions" },
+      { detail: "Read only: belongs to another team" },
+      { detail: { reason: "forbidden" } },
+      { message: "forbidden" },
+    ])("shows an explicit RO error without assuming detail is a string: %j", async (body) => {
+      const client = new ApiClient(mockSession, createConfig(AuthType.OAUTH2PROXY));
+      const result = client.handleResponse(createMockResponse(body, 403), "/incidents/id/status", "POST");
+      await expect(result).rejects.toBeInstanceOf(KeepApiReadOnlyError);
+      await expect(result).rejects.toThrow("Read only: you do not have permission to change this object");
+      expect(signOutClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("authentication headers", () => {
+    it("uses proxy authentication without sending the session marker as a bearer", () => {
+      const session = { ...mockSession, accessToken: "oauth2proxy:test@example.test" };
+      const client = new ApiClient(session, createConfig(AuthType.OAUTH2PROXY));
+      expect(client.getHeaders()).not.toHaveProperty("Authorization");
+    });
+
+    it("preserves trusted proxy headers for server API requests without a bearer", () => {
+      const proxyHeaders = {
+        "x-auth-request-email": "test@example.test",
+        "x-auth-request-groups": "/keep-ops-l1",
+      };
+      const client = new ApiClient(mockSession, createConfig(AuthType.OAUTH2PROXY), {
+        headers: proxyHeaders,
+      });
+      expect(client.getHeaders()).toMatchObject(proxyHeaders);
+      expect(client.getHeaders()).not.toHaveProperty("Authorization");
+    });
+
+    it("keeps bearer authentication for other authentication types", () => {
+      const client = new ApiClient(mockSession, createConfig(AuthType.KEYCLOAK));
+      expect(client.getHeaders()).toHaveProperty("Authorization", "Bearer test-token");
     });
   });
 

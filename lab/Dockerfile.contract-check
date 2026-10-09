@@ -1,0 +1,10 @@
+ARG KEEP_BACKEND_IMAGE=keep-backend:lab-review-20261004
+FROM ${KEEP_BACKEND_IMAGE}
+USER root
+ENV TMPDIR=/contract-work/tmp PIP_CACHE_DIR=/contract-work/pip-cache
+COPY lab/requirements.contract-check.txt /contract-check/requirements.txt
+RUN mkdir -p /contract-work/tmp /contract-work/pip-cache /contract-check/deps && \
+    /usr/local/bin/python -m pip install --disable-pip-version-check \
+      --target /contract-check/deps -r /contract-check/requirements.txt
+COPY --chown=1000:1000 keep /app/keep
+USER 1000:1000

@@ -1,0 +1,8 @@
+name: svc
+description: 'svc: first non-empty value from deployment, statefulset, daemonset, cronjob, job_name, persistentvolumeclaim, server, pod, container, instance, service, job'
+priority: 10
+attribute: '{{deployment}}|{{statefulset}}|{{daemonset}}|{{cronjob}}|{{job_name}}|{{persistentvolumeclaim}}|{{server}}|{{pod}}|{{container}}|{{instance}}|{{#service}}{{service}}{{/service}}|{{job}}|-'
+regex: ^\|*(?:[a-z]+://)?(?P<svc>[^:/|]+?)(?:(?:-[bcdfghjklmnpqrstvwxz2456789]{6,10})?-[bcdfghjklmnpqrstvwxz2456789]{5}|-\d+)?(?::\d+)?(?:/[^|]*)?(?:\||$)
+condition: null
+disabled: false
+pre: false

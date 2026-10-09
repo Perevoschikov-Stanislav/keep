@@ -1,0 +1,468 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: incident-policy
+tenant_id: keep
+revision: example-a
+keep_url: https://keep.example.org
+access:
+  path: team-policy.yaml
+  sha256: e628b5c07bfa52162b72f583b3211886dfdf9e516413604bf725f4a924a4d92d
+mappings:
+- id: ownership
+  artifact:
+    path: mappings/ownership.yaml
+    sha256: 756aff7c707e191f9e2eb6f6837e35a10cd0434c118efe2340022d10b5246415
+workflows:
+- id: record-evidence
+  artifact:
+    path: workflows/record-evidence.yaml
+    sha256: b665685a3e0eb983f560304f97cc822e43f311755411e96318e6264bec3de89a
+normalization:
+- id: explicit-labels
+  team_ids:
+  - cedar
+  - quartz
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - &id001
+    name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - &id002
+    name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - &id003
+    name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - &id004
+    name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - &id005
+    name: service
+    sources:
+    - labels.service
+    - labels.app
+    missing:
+      mode: mark_unknown
+  - &id006
+    name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: literal
+      value: lab
+- id: pod-name-fallback
+  team_ids:
+  - cedar
+  - quartz
+  priority: 10
+  match: has(labels.pod) && !(has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '') && !(has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '')
+  fields:
+  - *id001
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  - name: workload
+    sources:
+    - labels.pod
+    extract:
+      pattern: ^(.*)-[a-z0-9]{8,10}-[a-z0-9]{5}$
+      group: 1
+    missing:
+      mode: mark_unknown
+presentations:
+- id: workload
+  title: 'workload: {{ normalized.workload }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  severity_colors:
+    critical: '#d32f2f'
+- id: pvc
+  title: 'pvc: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Pvc
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  severity_colors:
+    critical: '#d32f2f'
+- id: node
+  title: 'node: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Node
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  severity_colors:
+    critical: '#d32f2f'
+- id: service
+  title: 'service: {{ normalized.service }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.service
+    label: Service
+    order: 10
+  - path: normalized.namespace
+    label: Namespace
+    order: 20
+  links:
+  - label: Open in Keep
+    url_template: '{{ keep_url }}/incidents/{{ incident.id }}'
+  actions:
+  - command: ack
+    label: Acknowledge
+  - command: resolve
+    label: Resolve
+  - command: silence
+    label: Silence
+  severity_colors:
+    critical: '#d32f2f'
+correlation_overlap: first_match
+correlation:
+- id: workload
+  team_ids:
+  - cedar
+  - quartz
+  priority: 40
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'workload'
+  group_by: &id007
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.workload
+  required_fields: *id007
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: workload
+  automation_ref: response
+- id: pvc
+  team_ids:
+  - cedar
+  - quartz
+  priority: 30
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'pvc'
+  group_by: &id008
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id008
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: pvc
+  automation_ref: response
+- id: node
+  team_ids:
+  - cedar
+  - quartz
+  priority: 20
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'node'
+  group_by: &id009
+  - normalized.cluster
+  - normalized.resource
+  required_fields: *id009
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: node
+  automation_ref: response
+- id: service
+  team_ids:
+  - cedar
+  - quartz
+  priority: 10
+  match: has(normalized.kind) && type(normalized.kind) == string && normalized.kind
+    == 'service'
+  group_by: &id010
+  - normalized.cluster
+  - normalized.service
+  required_fields: *id010
+  missing_required: separate_alert
+  window_seconds: 300
+  threshold: 1
+  lifecycle_ref: standard
+  presentation_ref: service
+  automation_ref: response
+lifecycle:
+- id: standard
+  resolve_on: all_resolved
+  reopen:
+    mode: reopen
+    within_seconds: 1800
+    ack: reset
+    assignee: preserve
+  flapping:
+    enabled: true
+    window_seconds: 1800
+    transition_threshold: 4
+    reset_after_seconds: 3600
+  clock: event_time
+  late_event_policy: history_only
+automation:
+- id: response
+  team_ids:
+  - cedar
+  - quartz
+  sla_start: last_reopen
+  ack_deadline_seconds: 600
+  stop_on:
+  - acknowledged
+  - resolved
+  on_reopen: reset
+  levels:
+  - id: first
+    after_seconds: 600
+    contact_refs:
+    - cedar-oncall
+    - quartz-oncall
+    destination_refs:
+    - cedar-json
+    - quartz-json
+    - cedar-chat
+    - quartz-chat
+    workflow_refs:
+    - record-evidence
+    repeat_every_seconds: 600
+    repeat_limit: 3
+  reminder:
+    every_seconds: 1200
+    destination_refs:
+    - cedar-json
+    - quartz-json
+    - cedar-chat
+    - quartz-chat
+  ticket:
+    workflow_ref: record-evidence
+    url_template: https://tickets.example.org/incident/{{ incident.id }}
+contacts:
+- id: cedar-oncall
+  team_id: cedar
+  label: Cedar on-call
+  addresses:
+  - transport_ref: json
+    address: cedar-oncall
+  - transport_ref: chat
+    address: '@cedar-oncall'
+- id: quartz-oncall
+  team_id: quartz
+  label: Quartz on-call
+  addresses:
+  - transport_ref: json
+    address: quartz-oncall
+  - transport_ref: chat
+    address: '@quartz-oncall'
+routing_overlap: fanout
+routes:
+- id: cedar-route
+  team_ids:
+  - cedar
+  priority: 100
+  match: 'true'
+  event_types: &id011
+  - incident.created
+  - incident.updated
+  - incident.acknowledged
+  - incident.resolved
+  - incident.reopened
+  - incident.escalated
+  - incident.reminder
+  destination_refs:
+  - cedar-json
+  - cedar-chat
+  contact_refs:
+  - cedar-oncall
+  presentation_ref: workload
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+- id: quartz-route
+  team_ids:
+  - quartz
+  priority: 100
+  match: 'true'
+  event_types: *id011
+  destination_refs:
+  - quartz-json
+  - quartz-chat
+  contact_refs:
+  - quartz-oncall
+  presentation_ref: workload
+  delivery_mode: upsert
+  update_fallback: append
+  actions_fallback: keep_link
+transports:
+- id: json
+  kind: http_json
+  adapter_ref: http-json-v1
+  endpoint: http://fixture-receiver.keep-lab.svc.cluster.local:8080
+  auth_ref: null
+  capabilities:
+    update: false
+    actions: false
+    receipts: false
+  delivery:
+    timeout_seconds: 8
+    retry:
+      max_attempts: 3
+    rate_limit:
+      per_second: 2
+      burst: 2
+    debounce_seconds: 0
+- id: chat
+  kind: mattermost
+  adapter_ref: mattermost-api-v1
+  endpoint: http://mattermost.keep-lab.svc.cluster.local:8065
+  auth_ref: env:KEEP_CHAT_BOT_TOKEN
+  capabilities:
+    update: true
+    actions: true
+    receipts: true
+  callback_client_ref: chat-actions
+  delivery:
+    debounce_seconds: 10
+destinations:
+- id: cedar-json
+  team_id: cedar
+  transport_ref: json
+  options:
+    path: /events/cedar
+- id: quartz-json
+  team_id: quartz
+  transport_ref: json
+  options:
+    path: /events/quartz
+- id: cedar-chat
+  team_id: cedar
+  transport_ref: chat
+  options:
+    channel_id: lab-channel-cedar
+- id: quartz-chat
+  team_id: quartz
+  transport_ref: chat
+  options:
+    channel_id: lab-channel-quartz
+proof_profiles:
+- id: operator-proof
+  issuer: https://identity.example.org/realms/keep
+  audience: keep-operator
+  jwks_url: https://identity.example.org/realms/keep/protocol/openid-connect/certs
+  algorithms:
+  - RS256
+  authorized_parties:
+  - keep-actions
+  required_claims:
+    typ: Bearer
+service_clients:
+- id: chat-actions
+  origin: local-chat-adapter
+  auth_ref: env:KEEP_CHAT_CLIENT_TOKEN
+  team_ids:
+  - cedar
+  - quartz
+  proof_profile_refs:
+  - operator-proof
+  scopes:
+  - read:silence
+  - write:silence
+  - update:silence
+  - update:incident
+subscribers:
+- id: cedar-silences
+  team_ids:
+  - cedar
+  event_types: &id012
+  - silence.created
+  - silence.updated
+  - silence.activated
+  - silence.cancelled
+  - silence.expired
+  destination_refs:
+  - cedar-json
+  - cedar-chat
+- id: quartz-silences
+  team_ids:
+  - quartz
+  event_types: *id012
+  destination_refs:
+  - quartz-json
+  - quartz-chat
+dispatch:
+  scan_interval_seconds: 5
+  batch_size: 100
+  lease_seconds: 60
+  snapshot_page_size: 100

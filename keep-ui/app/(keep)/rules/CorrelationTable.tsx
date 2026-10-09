@@ -113,7 +113,9 @@ export const CorrelationTable = ({ rules }: CorrelationTableProps) => {
       }),
       columnHelper.display({
         id: "menu",
-        cell: (context) => <DeleteRuleCell ruleId={context.row.original.id} />,
+        cell: (context) => context.row.original.iac?.managed
+          ? <Badge color="gray">IaC · {context.row.original.iac.revision}</Badge>
+          : <DeleteRuleCell ruleId={context.row.original.id} />,
       }),
     ],
     []
@@ -175,7 +177,7 @@ export const CorrelationTable = ({ rules }: CorrelationTableProps) => {
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
-                    onClick={() => router.push(`?id=${cell.row.original.id}`)}
+                    onClick={() => !cell.row.original.iac?.managed && router.push(`?id=${cell.row.original.id}`)}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
@@ -185,7 +187,7 @@ export const CorrelationTable = ({ rules }: CorrelationTableProps) => {
           </TableBody>
         </Table>
       </Card>
-      {(isRuleCreation || !!selectedRule) && (
+      {(isRuleCreation || (!!selectedRule && !selectedRule.iac?.managed)) && (
         <CorrelationSidebar
           isOpen={true}
           toggle={onCloseCorrelation}

@@ -65,7 +65,30 @@ class RulesEngine:
             session: db session
         """
         self.logger.info("Running CEL rules")
-        cel_incidents = self._run_cel_rules(events, session)
+        from keep.api.core.incident_configuration import configuration_scope, active_configuration
+        from keep.api.core.incident_correlation import correlate_event
+        from keep.api.core.incident_runtime_ownership import ownership
+        from keep.api.core.db import existed_or_new_session
+        with configuration_scope(self.tenant_id):
+            snapshot = active_configuration(self.tenant_id)
+            events = [event for event in events if ownership(snapshot, event.team_id)["domain"] != "disabled"]
+            if snapshot and snapshot["bundle"].get("correlation"):
+                result = {}
+                legacy_events = [event for event in events if ownership(snapshot, event.team_id)["domain"] == "legacy"]
+                for incident in self._run_cel_rules(legacy_events, session) if legacy_events else []:
+                    result[incident.id] = incident
+                with existed_or_new_session(session) as configured_session:
+                    for event in events:
+                        try:
+                            changes = correlate_event(self.tenant_id, event, snapshot, configured_session)
+                        except Exception:
+                            configured_session.rollback()
+                            raise
+                        for incident, event_type in changes:
+                            RulesEngine.send_workflow_event(self.tenant_id, configured_session, incident, event_type)
+                            result[incident.id] = incident
+                return list(result.values())
+            cel_incidents = self._run_cel_rules(events, session)
         self.logger.info("CEL rules ran successfully")
 
         return cel_incidents
@@ -249,17 +272,48 @@ class RulesEngine:
     def _get_or_create_incident(
         self, rule: Rule, rule_fingerprint, session, event, creation_allowed=True
     ) -> (Optional[Incident], bool):
+        from keep.api.core.db import existed_or_new_session
+        from keep.api.core.incident_configuration import configuration_scope
+        from keep.api.core.incident_correlation import digest, lock_group
+        from keep.api.models.db.tenant import Tenant
+        from sqlmodel import select
+
+        with configuration_scope(self.tenant_id), existed_or_new_session(session) as locked_session:
+            locked_session.exec(select(Tenant).where(Tenant.id == self.tenant_id).with_for_update(key_share=True)).first()
+            key = digest(["legacy-correlation-lock-v1", self.tenant_id, event.team_id, str(rule.id), rule_fingerprint])
+            group = lock_group(locked_session, self.tenant_id, event.team_id, {"id": str(rule.id)}, "legacy-v2", key)
+            try:
+                result = self._get_or_create_incident_locked(rule, rule_fingerprint, locked_session, event, creation_allowed)
+                if result[0]:
+                    group.incident_id = result[0].id
+                    locked_session.add(group)
+                locked_session.commit()
+                if result[0]:
+                    locked_session.refresh(result[0])
+                return result
+            except Exception:
+                locked_session.rollback()
+                raise
+
+    def _get_or_create_incident_locked(
+        self, rule: Rule, rule_fingerprint, session, event, creation_allowed=True
+    ) -> (Optional[Incident], bool):
 
         existed_incident, expired = get_incident_for_grouping_rule(
             self.tenant_id,
             rule,
             rule_fingerprint,
             session=session,
+            team_id=getattr(event, "team_id", None),
         )
+        if existed_incident and existed_incident.team_id != getattr(event, "team_id", None):
+            # The same correlation key must never join alerts owned by different teams.
+            existed_incident, expired = None, False
 
         if existed_incident and not expired and rule.incident_prefix:
-            if rule.incident_prefix not in existed_incident.user_generated_name:
-                existed_incident.user_generated_name = f"{rule.incident_prefix}-{existed_incident.running_number} - {existed_incident.user_generated_name}"
+            if rule.incident_prefix not in (existed_incident.generated_name or ""):
+                existed_incident.generated_name = existed_incident.generated_name or rule.name
+                existed_incident.generated_name = f"{rule.incident_prefix}-{existed_incident.running_number} - {existed_incident.generated_name}"
                 self.logger.info(
                     "Incident name updated with prefix",
                 )
@@ -270,7 +324,7 @@ class RulesEngine:
         # if incident name template, merge
         elif existed_incident and not expired:
             incident_name = copy.copy(rule.incident_name_template)
-            current_name = existed_incident.user_generated_name
+            current_name = existed_incident.generated_name
             self.logger.info(
                 "Updating the incident name based on the new event",
                 extra={
@@ -308,14 +362,14 @@ class RulesEngine:
             if rule.incident_prefix and rule.incident_prefix not in incident_name:
                 incident_name = f"{rule.incident_prefix}-{existed_incident.running_number} - {incident_name}"
             # we are done
-            if existed_incident.user_generated_name != incident_name:
-                existed_incident.user_generated_name = incident_name
+            if existed_incident.generated_name != incident_name:
+                existed_incident.generated_name = incident_name
                 self.logger.info(
                     "Incident name updated",
                     extra={
                         "incident_id": existed_incident.id,
                         "old_incident_name": current_name,
-                        "new_incident_name": existed_incident.user_generated_name,
+                        "new_incident_name": existed_incident.generated_name,
                     },
                 )
             return existed_incident, False
@@ -354,6 +408,8 @@ class RulesEngine:
                 incident_name=incident_name,
                 past_incident=existed_incident,
                 assignee=rule.assignee,
+                team_id=getattr(event, "team_id", None),
+                commit=False,
             )
             return incident, True
         return None, False
@@ -579,87 +635,30 @@ class RulesEngine:
 
         # note: rule_fingerprint is not a unique id, since different rules can lead to the same rule_fingerprint
         #       hence, the actual fingerprint is composed of the rule_fingerprint and the incident id
-        event_payload = event.dict()
-        grouping_criteria = rule.grouping_criteria or []
+        from keep.api.core.incident_correlation import MISSING, digest, typed, value_at
+        from keep.api.core.event_normalization import known_normalized_field
+        payload = event.dict()
+        criteria = rule.grouping_criteria or []
+        values = [value_at(payload, path) for path in criteria]
+        if any(value is MISSING or value is None or value in ("", [], {}) for value in values) or any(
+                not known_normalized_field(payload, path) for path in criteria):
+            event.correlation = {"decisions": [{"rule_id": str(rule.id), "reason": "missing_required"}]}
+            return []
+        groups = [list(zip(criteria, values))]
+        if rule.multi_level:
+            if len(values) != 1 or not isinstance(values[0], dict) or not rule.multi_level_property_name:
+                return []
+            expanded = [value_at(value, rule.multi_level_property_name) for value in values[0].values()]
+            if any(value is MISSING or value is None or value in ("", [], {}) for value in expanded):
+                return []
+            groups = [[(criteria[0] + ".*." + rule.multi_level_property_name, value)] for value in expanded]
+        try:
+            keys = {digest(["legacy-correlation-v2", self.tenant_id, event.team_id, str(rule.id),
+                            [[path, typed(value)] for path, value in group]]) for group in groups}
+        except ValueError:
+            return []
+        return [[key] for key in sorted(keys)]
 
-        if not rule.multi_level:
-            rule_fingerprints = []
-            for criteria in grouping_criteria:
-                # we need to extract the value from the event
-                # e.g. if the criteria is "event.labels.queue"
-                # than we need to extract the value of event["labels"]["queue"]
-                criteria_parts = criteria.split(".")
-                value = event_payload
-                for part in criteria_parts:
-                    value = value.get(part)
-                if isinstance(value, list):
-                    value = ",".join(value)
-
-                rule_fingerprints.append(value)
-            # if, for example, the event should have labels.X but it doesn't,
-            # than we will have None in the rule_fingerprint
-            if not rule_fingerprints:
-                self.logger.warning(
-                    f"Failed to calculate rule fingerprint for event {event.id} and rule {rule.name}",
-                    extra={
-                        "rule_id": rule.id,
-                        "rule_name": rule.name,
-                        "tenant_id": self.tenant_id,
-                    },
-                )
-                return [["none"]]
-            # if any of the values is None, we will return "none"
-            if any([fingerprint is None for fingerprint in rule_fingerprints]):
-                self.logger.warning(
-                    f"Failed to fetch the appropriate labels from the event {event.id} and rule {rule.name}",
-                    extra={
-                        "rule_id": rule.id,
-                        "rule_name": rule.name,
-                        "tenant_id": self.tenant_id,
-                    },
-                )
-                return [["none"]]
-            return [rule_fingerprints]
-        else:
-            fingerprints = set()
-            # the idea is pretty simple but implementation is a bit hacky for now
-            # we expect the grouping criteria to be a dict with the key being the property name
-            # for example: {"customers": {"1": {"name": "John", "age": 30}, "2": {"name": "Jane", "age": 25}}}
-            # and we want to group by the "name" property
-            # so we will get ["John", "Jane"] and 2 incidents will be created: one for "John" and one for "Jane" with same alerts.
-            if not grouping_criteria:
-                self.logger.warning(
-                    "wtf? no grouping criteria for multi_level rule",
-                    extra={
-                        "rule_id": rule.id,
-                        "rule_name": rule.name,
-                        "tenant_id": self.tenant_id,
-                    },
-                )
-                return [["none"]]
-            # @tb: this is a known limitation for now, we only accept 1 grouping criteria for multi_level rule
-            criteria = grouping_criteria[0]
-            criteria_parts = criteria.split(".")
-            for part in criteria_parts:
-                value = event_payload
-                for part in criteria_parts:
-                    value = value.get(part)
-                if not isinstance(value, dict):
-                    self.logger.warning(
-                        "multi level rule grouping criteria is not a dict",
-                        extra={
-                            "rule_id": rule.id,
-                            "rule_name": rule.name,
-                            "tenant_id": self.tenant_id,
-                        },
-                    )
-                    return [["none"]]
-                for key in value.keys():
-                    fingerprints.add(value[key].get(rule.multi_level_property_name))
-                return [[key] for key in fingerprints]
-        return [["none"]]
-
-    @staticmethod
     def get_alerts_activation(alerts: list[AlertDto]):
         activations = []
         for alert in alerts:

@@ -1,4 +1,5 @@
 export interface ExtractionRule {
+  iac?: { managed: boolean; revision: string } | null;
   id: number;
   priority: number;
   name: string;

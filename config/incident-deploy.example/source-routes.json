@@ -1,0 +1,45 @@
+{
+  "routes": [
+    {
+      "match": "OPS/customer-a/lis",
+      "channel": "examplechannel000000000003",
+      "name": "integration-customer-a-incidents"
+    },
+    {
+      "match": "OPS/customer-b/lis",
+      "channel": "examplechannel000000000005",
+      "name": "integration-customer-b-incidents"
+    },
+    {
+      "match": "OPS/customer-a/*",
+      "channel": "examplechannel000000000010",
+      "name": "customer-a-incidents"
+    },
+    {
+      "match": "OPS/customer-b/*",
+      "channel": "examplechannel000000000006",
+      "name": "customer-b-incidents"
+    },
+    {
+      "match": "OPS/production-cluster/*",
+      "channel": "examplechannel000000000009",
+      "name": "cloud-incidents"
+    },
+    {
+      "match": "OPS/infra-cluster prod/*",
+      "channel": "examplechannel000000000009",
+      "name": "cloud-incidents"
+    },
+    {
+      "match": "OPS/infra-cluster app-prod/*",
+      "channel": "examplechannel000000000009",
+      "name": "cloud-incidents"
+    },
+    {
+      "match": "*",
+      "channel": "examplechannel000000000002",
+      "name": "test-incidents-it"
+    }
+  ],
+  "selected_active_incident_ids": []
+}

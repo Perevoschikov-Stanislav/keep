@@ -1,0 +1,22 @@
+workflow:
+  id: incident-update
+  name: incident-update
+  description: Incident update -> update Mattermost post and thread
+  triggers:
+  - type: incident
+    events:
+    - updated
+  actions:
+  - name: notify
+    provider:
+      type: http
+      with:
+        method: POST
+        url: http://core-compat-bridge.keep-lab.svc:8080/notify
+        headers:
+          X-Bridge-Secret: '{{ secrets.bridge_secret }}'
+        body:
+          incident_id: '{{ incident.id }}'
+          event: updated
+    notification: true
+  disabled: true

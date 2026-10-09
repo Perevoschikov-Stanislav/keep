@@ -1,0 +1,17 @@
+ruleName: node
+sqlQuery:
+  sql: family == "node" && has(labels.instance)
+  params: {}
+celQuery: family == "node" && has(labels.instance)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- instance
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · host {{ alert.instance }}: {{ alert.alertname
+  }}'
+requireApprove: false
+threshold: 1

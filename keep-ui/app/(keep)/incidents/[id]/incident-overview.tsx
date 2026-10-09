@@ -5,6 +5,8 @@ import {
   type IncidentDto,
 } from "@/entities/incidents/model";
 import React, { useState } from "react";
+import { EventPresentation } from "@/shared/ui/EventPresentation/EventPresentation";
+import { CorrelationExplanation, LifecycleExplanation, AutomationExplanation } from "@/shared/ui/CorrelationExplanation/CorrelationExplanation";
 import { useIncident, useIncidentAlerts } from "@/utils/hooks/useIncidents";
 import { Disclosure } from "@headlessui/react";
 import { IoChevronDown } from "react-icons/io5";
@@ -12,7 +14,7 @@ import { Badge, Callout } from "@tremor/react";
 import { Button, DynamicImageProviderIcon, Link } from "@/components/ui";
 import { IncidentChangeStatusSelect } from "features/incidents/change-incident-status";
 import { getIncidentName } from "@/entities/incidents/lib/utils";
-import { DateTimeField, FieldHeader } from "@/shared/ui";
+import { DateTimeField, FieldHeader, showErrorToast } from "@/shared/ui";
 import {
   SameIncidentField,
   FollowingIncidents,
@@ -21,6 +23,7 @@ import { StatusIcon } from "@/entities/incidents/ui/statuses";
 import clsx from "clsx";
 import { TbSparkles } from "react-icons/tb";
 import {
+  CopilotKit,
   CopilotTask,
   useCopilotAction,
   useCopilotContext,
@@ -33,10 +36,13 @@ import { RootCauseAnalysis } from "@/components/ui/RootCauseAnalysis";
 import { IncidentChangeSeveritySelect } from "features/incidents/change-incident-severity";
 import { useApi } from "@/shared/lib/hooks/useApi";
 import { startCase, map } from "lodash";
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 import { useConfig } from "@/utils/hooks/useConfig";
 import { EnrichmentEditableField } from "@/app/(keep)/incidents/[id]/enrichments/EnrichmentEditableField";
 import { EnrichmentEditableForm } from "@/app/(keep)/incidents/[id]/enrichments/EnrichmentEditableForm";
 import { FormattedContent } from "@/shared/ui/FormattedContent/FormattedContent";
+import { FiExternalLink } from "react-icons/fi";
+import { NotificationCommand } from "@/features/incidents/notification-command/ui/NotificationCommand";
 
 const PROVISIONED_ENRICHMENTS = [
   "services",
@@ -50,27 +56,219 @@ const PROVISIONED_ENRICHMENTS = [
   "traces",
 ];
 
+export function isEnrichmentHidden(
+  key: string,
+  customHidden?: string[]
+): boolean {
+  const lowerKey = key.toLowerCase();
+  if (PROVISIONED_ENRICHMENTS.indexOf(key) > -1) return true;
+
+  // Default integration internal fields that shouldn't clutter the card
+  const defaultHiddenPrefixes = ["mm_", "mm ", "snooze_", "snooze ", "_"];
+  if (defaultHiddenPrefixes.some((p) => lowerKey.startsWith(p))) return true;
+
+  if (customHidden && customHidden.length > 0) {
+    for (const pattern of customHidden) {
+      const p = pattern.trim().toLowerCase();
+      if (!p) continue;
+      if (p.endsWith("*")) {
+        const prefix = p.slice(0, -1);
+        if (lowerKey.startsWith(prefix)) return true;
+      } else if (lowerKey === p) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function isEnrichmentReadOnly(
+  key: string,
+  customReadOnly?: string[]
+): boolean {
+  const lowerKey = key.toLowerCase();
+  const defaultReadOnly = [
+    "ticket",
+    "ticket_url",
+    "jira",
+    "jira_url",
+    "mattermost",
+    "mattermost_url",
+    "runbook",
+    "runbook_url",
+    "cluster",
+    "namespace",
+    "zone",
+    "service",
+    "external_incident",
+  ];
+  if (defaultReadOnly.includes(lowerKey)) return true;
+
+  if (customReadOnly && customReadOnly.length > 0) {
+    for (const pattern of customReadOnly) {
+      const p = pattern.trim().toLowerCase();
+      if (!p) continue;
+      if (p.endsWith("*")) {
+        const prefix = p.slice(0, -1);
+        if (lowerKey.startsWith(prefix)) return true;
+      } else if (lowerKey === p) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+interface ExternalLinkItem {
+  id: string;
+  title: string;
+  url: string;
+  provider?: string;
+}
+
+function extractExternalLinks(incident: IncidentDto): ExternalLinkItem[] {
+  const links: ExternalLinkItem[] = [];
+  const seenUrls = new Set<string>();
+  const urlRegex = /(https?:\/\/[^\s]+)/;
+
+  // 1. Primary external incident from enrichments (incident_url)
+  if (incident.enrichments?.incident_url) {
+    const rawUrl = String(incident.enrichments.incident_url).trim();
+    if (rawUrl && !seenUrls.has(rawUrl)) {
+      seenUrls.add(rawUrl);
+      const provider =
+        incident.enrichments?.incident_provider ||
+        (rawUrl.includes("mattermost")
+          ? "mattermost"
+          : rawUrl.includes("jira")
+          ? "jira"
+          : undefined);
+      links.push({
+        id: "primary_external_incident",
+        title:
+          incident.enrichments?.incident_title ||
+          incident.user_generated_name ||
+          (provider ? `${startCase(provider)} Incident` : "External Incident"),
+        url: rawUrl,
+        provider,
+      });
+    }
+  }
+
+  // 2. Ticket / Jira enrichments
+  const ticketEnrichment =
+    incident.enrichments?.ticket_url ||
+    incident.enrichments?.jira_url ||
+    incident.enrichments?.ticket ||
+    incident.enrichments?.jira;
+
+  if (ticketEnrichment) {
+    const match = String(ticketEnrichment).match(urlRegex);
+    const url = match ? match[1] : String(ticketEnrichment).trim();
+    if (url.startsWith("http") && !seenUrls.has(url)) {
+      seenUrls.add(url);
+      const rawTitle = String(ticketEnrichment)
+        .replace(url, "")
+        .replace(/^ticket:\s*/i, "")
+        .replace(/[\[\]()]/g, "")
+        .trim();
+      links.push({
+        id: "ticket",
+        title: rawTitle || "Jira Ticket",
+        url,
+        provider: "jira",
+      });
+    }
+  }
+
+  // 3. Runbook enrichments
+  const runbookEnrichment =
+    incident.enrichments?.runbook_url || incident.enrichments?.runbook;
+  if (runbookEnrichment) {
+    const match = String(runbookEnrichment).match(urlRegex);
+    const url = match ? match[1] : String(runbookEnrichment).trim();
+    if (url.startsWith("http") && !seenUrls.has(url)) {
+      seenUrls.add(url);
+      links.push({
+        id: "runbook",
+        title: "Runbook",
+        url,
+      });
+    }
+  }
+
+  // 4. Other custom URL enrichments
+  if (incident.enrichments) {
+    for (const [key, val] of Object.entries(incident.enrichments)) {
+      if (
+        [
+          "incident_url",
+          "ticket_url",
+          "jira_url",
+          "ticket",
+          "jira",
+          "runbook_url",
+          "runbook",
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (typeof val === "string" && (key.endsWith("_url") || key.endsWith("_link"))) {
+        const match = val.match(urlRegex);
+        const url = match ? match[1] : val.trim();
+        if (url.startsWith("http") && !seenUrls.has(url)) {
+          seenUrls.add(url);
+          const provider =
+            key.includes("mattermost")
+              ? "mattermost"
+              : key.includes("slack")
+              ? "slack"
+              : key.includes("jira")
+              ? "jira"
+              : key.includes("github")
+              ? "github"
+              : undefined;
+          links.push({
+            id: key,
+            title: startCase(key.replace(/(_url|_link)$/, "")),
+            url,
+            provider,
+          });
+        }
+      }
+    }
+  }
+
+  return links;
+}
+
 interface Props {
   incident: IncidentDto;
 }
 
-function Summary({
-  title,
-  summary,
-  collapsable,
-  className,
-  alerts,
-  incident,
-}: {
+interface SummaryProps {
   title: string;
   summary: string;
   collapsable?: boolean;
   className?: string;
   alerts: AlertDto[];
   incident: IncidentDto;
-}) {
-  const [generatedSummary, setGeneratedSummary] = useState("");
+}
+
+function Summary(props: SummaryProps) {
   const { data: config } = useConfig();
+  if (config?.KEEP_OSS_ONLY === false && config?.OPEN_AI_API_KEY_SET) {
+    return (
+      <CopilotKit showDevConsole={false} runtimeUrl="/api/copilotkit">
+        <SummaryWithCopilot {...props} />
+      </CopilotKit>
+    );
+  }
+  return <SummaryContent {...props} />;
+}
+
+function SummaryWithCopilot({ alerts, incident, ...props }: SummaryProps) {
+  const [generatedSummary, setGeneratedSummary] = useState("");
   const { updateIncident } = useIncidentActions();
   const context = useCopilotContext();
   useCopilotReadable({
@@ -79,7 +277,7 @@ function Summary({
   });
   useCopilotReadable({
     description: "The incident title",
-    value: incident.user_generated_name ?? incident.ai_generated_name,
+    value: getIncidentName(incident),
   });
   useCopilotAction({
     name: "setGeneratedSummary",
@@ -108,6 +306,31 @@ function Summary({
     await task.run(context);
     setGeneratingSummary(false);
   };
+
+  return (
+    <SummaryContent
+      {...props}
+      generatedSummary={generatedSummary}
+      generatingSummary={generatingSummary}
+      onGenerate={executeTask}
+    />
+  );
+}
+
+function SummaryContent({
+  title,
+  summary,
+  collapsable,
+  className,
+  generatedSummary = "",
+  generatingSummary = false,
+  onGenerate,
+}: Omit<SummaryProps, "alerts" | "incident"> & {
+  generatedSummary?: string;
+  generatingSummary?: boolean;
+  onGenerate?: () => Promise<void>;
+}) {
+  const { data: config } = useConfig();
 
   const formatedSummary = (
     <div className="prose prose-slate max-w-2xl [&>p]:!my-1 [&>ul]:!my-1 [&>ol]:!my-1">
@@ -139,11 +362,11 @@ function Summary({
   return (
     <div>
       {formatedSummary}
-      <Button
+      {config?.KEEP_OSS_ONLY === false && <Button
         variant="secondary"
-        onClick={executeTask}
+        onClick={onGenerate}
         className="mt-2.5"
-        disabled={generatingSummary || !config?.OPEN_AI_API_KEY_SET}
+        disabled={generatingSummary || !config?.OPEN_AI_API_KEY_SET || !onGenerate}
         loading={generatingSummary}
         icon={TbSparkles}
         size="xs"
@@ -154,7 +377,7 @@ function Summary({
         }
       >
         AI Summary
-      </Button>
+      </Button>}
     </div>
   );
 }
@@ -196,6 +419,13 @@ function MergedCallout({
 
 export function IncidentOverview({ incident: initialIncidentData }: Props) {
   const router = useRouter();
+  const { data: config } = useConfig();
+  const overviewFields = config?.INCIDENT_OVERVIEW_FIELDS;
+  const isFieldVisible = (fieldName: string) => {
+    if (!overviewFields || overviewFields.length === 0) return true;
+    return overviewFields.includes(fieldName);
+  };
+
   const { data: fetchedIncident, mutate } = useIncident(
     initialIncidentData.id,
     {
@@ -204,6 +434,8 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
     }
   );
   const incident = fetchedIncident || initialIncidentData;
+  const { can } = useUserPermissions();
+  const canEdit = can("update:incident", incident);
   const summary = incident.user_summary || incident.generated_summary;
   // Why do we have "null" in services?
   const notNullServices = incident.services.filter(
@@ -239,6 +471,8 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
       )
     ) as Array<string>);
 
+  const externalLinks = extractExternalLinks(incident);
+
   const filterBy = (key: string, value: string) => {
     router.push(
       `/alerts/feed?cel=${key}%3D%3D${encodeURIComponent(`"${value}"`)}`
@@ -259,7 +493,7 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
       await mutate();
     } catch (error) {
       // Handle unexpected error
-      console.error("An unexpected error occurred");
+      showErrorToast(error);
     }
   };
 
@@ -273,7 +507,7 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
       await mutate();
     } catch (error) {
       // Handle unexpected error
-      console.error("An unexpected error occurred");
+      showErrorToast(error);
     }
   };
 
@@ -281,6 +515,11 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
     fieldName: string,
     fieldValue: string | string[]
   ) => {
+    if (
+      !canEdit || isEnrichmentReadOnly(fieldName.trim(), config?.ENRICHMENTS_READ_ONLY_KEYS)
+    ) {
+      return;
+    }
     await handleBulkEnrichmentChange({ [fieldName]: fieldValue });
   };
 
@@ -295,15 +534,23 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
     // Adding padding bottom to visually separate from the tabs
     <div className="flex gap-6 items-start w-full text-tremor-default">
       <div className="basis-2/3 grow">
+        <NotificationCommand incident={incident} onSuccess={() => { mutate(); }} />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="max-w-2xl">
             <FieldHeader>Summary</FieldHeader>
-            <Summary
+            {!canEdit && <Badge color="gray">Read only: changes are not allowed for your role or team</Badge>}
+            {incident.presentation && !incident.user_summary ? (
+              <p className="whitespace-pre-wrap">{incident.presentation.description}</p>
+            ) : <Summary
               title="Summary"
               summary={summary}
               alerts={alerts.items}
               incident={incident}
-            />
+            />}
+            <EventPresentation presentation={incident.presentation} showDescription={Boolean(incident.user_summary)} />
+            <CorrelationExplanation correlation={incident.correlation} presentation={incident.presentation} alertsCount={incident.alerts_count} />
+            <LifecycleExplanation lifecycle={incident.lifecycle} />
+            <AutomationExplanation automation={incident.automation} />
             {/* @tb: not sure how we use this, but leaving it here for now
             {incident.user_summary && incident.generated_summary ? (
               <Summary
@@ -320,166 +567,193 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
                 merged_into_incident_id={incident.merged_into_incident_id}
               />
             )}
-            <div className="mt-2">
-              <SameIncidentField incident={incident} />
-            </div>
+            {isFieldVisible("same_incident_in_the_past") && !!incident.same_incident_in_the_past_id && (
+              <div className="mt-2">
+                <SameIncidentField incident={incident} />
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <FieldHeader>Services</FieldHeader>
-                <EnrichmentEditableField
-                  name="services"
-                  value={notNullServices}
-                  onUpdate={handleEnrichmentChange}
-                  onDelete={
-                    incident.enrichments?.services
-                      ? handleUnEnrichment
-                      : undefined
-                  }
-                />
-              </div>
+              {isFieldVisible("services") && notNullServices.length > 0 && (
+                <div>
+                  <FieldHeader>Services</FieldHeader>
+                  <EnrichmentEditableField
+                    name="services"
+                    readOnly={!canEdit}
+                    value={notNullServices}
+                    onUpdate={handleEnrichmentChange}
+                    onDelete={
+                      incident.enrichments?.services
+                        ? handleUnEnrichment
+                        : undefined
+                    }
+                  />
+                </div>
+              )}
 
-              <div>
-                <FieldHeader>Environments</FieldHeader>
-                <EnrichmentEditableField
-                  name="environments"
-                  value={environments}
-                  onUpdate={handleEnrichmentChange}
-                  onDelete={
-                    incident.enrichments?.environments
-                      ? handleUnEnrichment
-                      : undefined
-                  }
-                />
-              </div>
+              {isFieldVisible("environments") && environments && environments.length > 0 && (
+                <div>
+                  <FieldHeader>Environments</FieldHeader>
+                  <EnrichmentEditableField
+                    name="environments"
+                    readOnly={!canEdit}
+                    value={environments}
+                    onUpdate={handleEnrichmentChange}
+                    onDelete={
+                      incident.enrichments?.environments
+                        ? handleUnEnrichment
+                        : undefined
+                    }
+                  />
+                </div>
+              )}
 
-              <div>
-                <FieldHeader>External incident</FieldHeader>
+              {isFieldVisible("external_incident") && (
+                <div>
+                  <FieldHeader>External links</FieldHeader>
 
-                <EnrichmentEditableForm
-                  fields={{
-                    incident_id: incident.enrichments?.incident_id,
-                    incident_url: incident.enrichments?.incident_url,
-                    incident_provider: incident.enrichments?.incident_provider,
-                    incident_title: incident.enrichments?.incident_title,
-                  }}
-                  title="External incident"
-                  onUpdate={handleBulkEnrichmentChange}
-                  onDelete={handleBulkUnEnrichment}
-                >
-                  <>
-                    {incident.enrichments?.incident_id &&
-                    incident.enrichments?.incident_url ? (
-                      <div className="flex flex-wrap gap-1 truncate">
-                        <Badge
-                          size="sm"
-                          color="orange"
-                          icon={
-                            incident.enrichments?.incident_provider
-                              ? (props: any) => (
-                                  <DynamicImageProviderIcon
-                                    providerType={
-                                      incident.enrichments?.incident_provider
-                                    }
-                                    src={`/icons/${incident.enrichments?.incident_provider}-icon.png`}
-                                    height="24"
-                                    width="24"
-                                    {...props}
-                                  />
-                                )
-                              : undefined
-                          }
-                          className="cursor-pointer text-ellipsis"
-                          onClick={() =>
-                            window.open(
-                              incident.enrichments.incident_url,
-                              "_blank"
-                            )
-                          }
-                        >
-                          {incident.enrichments?.incident_title ??
-                            incident.user_generated_name}
-                        </Badge>
+                  <EnrichmentEditableForm
+                    fields={{
+                      incident_id: incident.enrichments?.incident_id,
+                      incident_url: incident.enrichments?.incident_url,
+                      incident_provider: incident.enrichments?.incident_provider,
+                      incident_title: incident.enrichments?.incident_title,
+                    }}
+                    title="External incident"
+                    onUpdate={handleBulkEnrichmentChange}
+                    onDelete={handleBulkUnEnrichment}
+                    readOnly={!canEdit || isEnrichmentReadOnly(
+                      "external_incident",
+                      config?.ENRICHMENTS_READ_ONLY_KEYS
+                    )}
+                  >
+                    <>
+                      {externalLinks.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {externalLinks.map((link) => (
+                            <Badge
+                              key={link.id}
+                              size="sm"
+                              color="orange"
+                              icon={
+                                link.provider
+                                  ? (props: any) => (
+                                      <DynamicImageProviderIcon
+                                        providerType={link.provider}
+                                        src={`/icons/${link.provider}-icon.png`}
+                                        height="20"
+                                        width="20"
+                                        {...props}
+                                      />
+                                    )
+                                  : (props: any) => (
+                                      <FiExternalLink
+                                        className="w-3.5 h-3.5 text-orange-600 inline"
+                                        {...props}
+                                      />
+                                    )
+                              }
+                              className="cursor-pointer inline-flex items-center gap-1 hover:bg-orange-200 transition-colors"
+                              tooltip={link.url}
+                              onClick={() => window.open(link.url, "_blank")}
+                            >
+                              <span className="truncate max-w-[200px]">
+                                {link.title}
+                              </span>
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        "No external links"
+                      )}
+                    </>
+                  </EnrichmentEditableForm>
+                </div>
+              )}
+
+              {isFieldVisible("repositories") && repositories && repositories.length > 0 && (
+                <div>
+                  <FieldHeader>Repositories</FieldHeader>
+
+                  <EnrichmentEditableField
+                    name="repositories"
+                    readOnly={!canEdit}
+                    value={repositories}
+                    onUpdate={handleEnrichmentChange}
+                    onDelete={
+                      incident.enrichments?.repositories
+                        ? handleUnEnrichment
+                        : undefined
+                    }
+                  >
+                    {repositories?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {repositories.map((repo: any) => {
+                          const repoName = repo.split("/").pop();
+                          return (
+                            <Badge
+                              key={repo}
+                              color="orange"
+                              size="sm"
+                              icon={(props: any) => (
+                                <DynamicImageProviderIcon
+                                  providerType="github"
+                                  src={`/icons/github-icon.png`}
+                                  height="24"
+                                  width="24"
+                                  {...props}
+                                />
+                              )}
+                              className="cursor-pointer"
+                              onClick={() => window.open(repo, "_blank")}
+                            >
+                              {repoName}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     ) : (
-                      "No external incidents"
+                      "No environments involved"
                     )}
-                  </>
-                </EnrichmentEditableForm>
-              </div>
+                  </EnrichmentEditableField>
+                </div>
+              )}
 
-              <div>
-                <FieldHeader>Repositories</FieldHeader>
-
-                <EnrichmentEditableField
-                  name="repositories"
-                  value={repositories}
-                  onUpdate={handleEnrichmentChange}
-                  onDelete={
-                    incident.enrichments?.repositories
-                      ? handleUnEnrichment
-                      : undefined
-                  }
-                >
-                  {repositories?.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {repositories.map((repo: any) => {
-                        const repoName = repo.split("/").pop();
-                        return (
-                          <Badge
-                            key={repo}
-                            color="orange"
-                            size="sm"
-                            icon={(props: any) => (
-                              <DynamicImageProviderIcon
-                                providerType="github"
-                                src={`/icons/github-icon.png`}
-                                height="24"
-                                width="24"
-                                {...props}
-                              />
-                            )}
-                            className="cursor-pointer"
-                            onClick={() => window.open(repo, "_blank")}
-                          >
-                            {repoName}
-                          </Badge>
-                        );
-                      })}
+              {isFieldVisible("assignee") && (
+                <div>
+                  <FieldHeader>Assignee</FieldHeader>
+                  <div className="flex flex-col gap-1">
+                    {incident.assignee ? (
+                      <p>{incident.assignee}</p>
+                    ) : (
+                      <p>No assignee yet</p>
+                    )}
+                    <div>
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        title={!canEdit ? "Read only: changes are not allowed" : undefined}
+                        className="text-sm text-gray-500 hover:text-orange-500 underline disabled:opacity-50"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Are you sure you want to assign this incident to yourself?"
+                            )
+                          ) {
+                            assignIncident(incident.id).catch((error) => showErrorToast(error));
+                          }
+                        }}
+                      >
+                        Assign to me
+                      </button>
                     </div>
-                  ) : (
-                    "No environments involved"
-                  )}
-                </EnrichmentEditableField>
-              </div>
-              <div>
-                <FieldHeader>Assignee</FieldHeader>
-                <div className="flex flex-col gap-1">
-                  {incident.assignee ? (
-                    <p>{incident.assignee}</p>
-                  ) : (
-                    <p>No assignee yet</p>
-                  )}
-                  <div>
-                    <span
-                      className="text-sm text-gray-500 cursor-pointer hover:text-orange-500 underline"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            "Are you sure you want to assign this incident to yourself?"
-                          )
-                        ) {
-                          assignIncident(incident.id);
-                        }
-                      }}
-                    >
-                      Assign to me
-                    </span>
                   </div>
                 </div>
-              </div>
-              {incident.rule_fingerprint !== "none" &&
+              )}
+
+              {isFieldVisible("grouped_by") &&
+                incident.rule_fingerprint !== "none" &&
                 !!incident.rule_fingerprint && (
                   <div>
                     <FieldHeader>Grouped by</FieldHeader>
@@ -497,26 +771,43 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
                     </div>
                   </div>
                 )}
-              {map(incident.enrichments, (value: any, key: string) => {
-                if (PROVISIONED_ENRICHMENTS.indexOf(key) > -1) return;
-                return (
-                  <div key={`incident-enrichment-${key}`}>
-                    <FieldHeader>{startCase(key)}</FieldHeader>
+              {isFieldVisible("enrichments") && (
+                <>
+                  {map(incident.enrichments, (value: any, key: string) => {
+                    if (isEnrichmentHidden(key, config?.ENRICHMENTS_HIDDEN_KEYS))
+                      return;
+                    const isReadOnly = !canEdit || isEnrichmentReadOnly(
+                      key,
+                      config?.ENRICHMENTS_READ_ONLY_KEYS
+                    );
+                    return (
+                      <div key={`incident-enrichment-${key}`}>
+                        <FieldHeader>{startCase(key)}</FieldHeader>
+                        <EnrichmentEditableField
+                          name={key}
+                          value={value}
+                          onUpdate={handleEnrichmentChange}
+                          onDelete={handleUnEnrichment}
+                          readOnly={isReadOnly}
+                        />
+                      </div>
+                    );
+                  })}
+                  <div>
                     <EnrichmentEditableField
-                      name={key}
-                      value={value}
+                      value={""}
+                      readOnly={!canEdit}
                       onUpdate={handleEnrichmentChange}
-                      onDelete={handleUnEnrichment}
+                      isNameReadOnly={(fieldName) =>
+                        isEnrichmentReadOnly(
+                          fieldName,
+                          config?.ENRICHMENTS_READ_ONLY_KEYS
+                        )
+                      }
                     />
                   </div>
-                );
-              })}
-              <div>
-                <EnrichmentEditableField
-                  value={""}
-                  onUpdate={handleEnrichmentChange}
-                />
-              </div>
+                </>
+              )}
             </div>
           </div>
           <div>
@@ -529,13 +820,16 @@ export function IncidentOverview({ incident: initialIncidentData }: Props) {
           <FieldHeader>Status</FieldHeader>
           <IncidentChangeStatusSelect
             incidentId={incident.id}
+            teamId={incident.team_id}
             value={incident.status}
+            expectedRevision={incident.lifecycle?.revision ?? 0}
           />
         </div>
         <div>
           <FieldHeader>Severity</FieldHeader>
           <IncidentChangeSeveritySelect
             incidentId={incident.id}
+            teamId={incident.team_id}
             value={incident.severity}
           />
         </div>

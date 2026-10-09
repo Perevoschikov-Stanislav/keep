@@ -1,0 +1,17 @@
+ruleName: probe-stands
+sqlQuery:
+  sql: family == "probe" && env_kind == "stand" && has(labels.namespace)
+  params: {}
+celQuery: family == "probe" && env_kind == "stand" && has(labels.namespace)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- namespace
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · {{ alert.namespace }}: {{ alert.alertname
+  }}'
+requireApprove: false
+threshold: 1

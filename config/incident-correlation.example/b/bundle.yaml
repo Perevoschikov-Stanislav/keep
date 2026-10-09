@@ -1,0 +1,289 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: correlation-example
+tenant_id: keep
+revision: correlation-b
+keep_url: https://keep.example.net
+access:
+  path: teams.yaml
+    sha256: adb02f317bd853662fb377b346012a0d94a71fb26a6ce5559b0b0b246fa8aa2d
+mappings:
+- id: component-ownership
+  artifact:
+    path: mapping.yaml
+    sha256: 1526abf6c45cac9b0c432a65d75caa18d51f1f385ae64ff1d8e6f3af058591df
+extraction:
+- id: component-name
+  artifact:
+    path: extraction.yaml
+    sha256: 0d74a0de51efa14a60e526284dad4e560e1c293c8a1be7d2ab8ae06653fbbe86
+workflows:
+- id: record-example
+  artifact:
+    path: workflow.yaml
+    sha256: 634e84920b6e3221f215d4ba3337ca905293edaa34160884aa596bef9a0df29a
+normalization:
+- id: workload-owner
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 200
+  match: has(labels.kind) && labels.kind == 'workload' && ((has(labels.workload) &&
+    type(labels.workload) == string && labels.workload != '') || (has(labels.owner)
+    && type(labels.owner) == string && labels.owner != ''))
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+- id: explicit-labels
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 100
+  match: '!has(labels.pod) || (has(labels.workload) && type(labels.workload) == string
+    && labels.workload != '''') || (has(labels.owner) && type(labels.owner) == string
+    && labels.owner != '''')'
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.workload
+    - labels.owner
+    missing:
+      mode: mark_unknown
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+- id: pod-fallback
+  team_ids:
+  - frontend-west
+  - network-east
+  priority: 10
+  match: has(labels.pod)
+  fields:
+  - name: cluster
+    sources:
+    - labels.cluster
+    missing:
+      mode: mark_unknown
+  - name: environment
+    sources:
+    - labels.environment
+    missing:
+      mode: mark_unknown
+  - name: namespace
+    sources:
+    - labels.namespace
+    missing:
+      mode: mark_unknown
+  - name: kind
+    sources:
+    - labels.kind
+    missing:
+      mode: mark_unknown
+  - name: resource
+    sources:
+    - labels.resource
+    - labels.pod
+    - labels.persistentvolumeclaim
+    - labels.node
+    - labels.db_instance
+    missing:
+      mode: mark_unknown
+  - name: workload
+    sources:
+    - labels.pod
+    missing:
+      mode: mark_unknown
+    extract:
+      pattern: ^(.*)-[a-z0-9]{10}-[a-z0-9]{5}$
+      group: 1
+  - name: service
+    sources:
+    - labels.application
+    - labels.service
+    missing:
+      mode: mark_unknown
+presentations:
+- id: workload
+  title: 'workload: {{ normalized.workload }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.workload
+    label: Workload
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: pvc
+  title: 'pvc: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Pvc
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: node
+  title: 'node: {{ normalized.resource }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.resource
+    label: Node
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+- id: service
+  title: 'service: {{ normalized.service }}'
+  description: '{{ normalized.namespace }} / {{ normalized.cluster }}'
+  fields:
+  - path: normalized.service
+    label: Service
+    order: 1
+  - path: normalized.cluster
+    label: Cluster
+    order: 2
+lifecycle:
+- id: basic
+  resolve_on: never
+  reopen:
+    mode: new_incident
+    within_seconds: 0
+    ack: reset
+    assignee: clear
+  flapping:
+    enabled: false
+    window_seconds: 300
+    transition_threshold: 4
+    reset_after_seconds: 600
+  clock: receive_time
+  late_event_policy: history_only
+correlation_overlap: parallel
+correlation:
+- id: workload
+  team_ids: &id002
+  - frontend-west
+  - network-east
+  priority: 100
+  match: normalized.kind == 'workload'
+  group_by: &id001
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.workload
+  required_fields: *id001
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: workload
+- id: pvc
+  team_ids: *id002
+  priority: 99
+  match: normalized.kind == 'pvc'
+  group_by: &id003
+  - normalized.cluster
+  - normalized.namespace
+  - normalized.resource
+  required_fields: *id003
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: pvc
+- id: node
+  team_ids: *id002
+  priority: 98
+  match: normalized.kind == 'node'
+  group_by: &id004
+  - normalized.cluster
+  - normalized.resource
+  required_fields: *id004
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: node
+- id: service
+  team_ids: *id002
+  priority: 97
+  match: normalized.kind == 'service'
+  group_by: &id005
+  - normalized.cluster
+  - normalized.service
+  required_fields: *id005
+  missing_required: skip_correlation
+  window_seconds: 60
+  threshold: 2
+  lifecycle_ref: basic
+  presentation_ref: service

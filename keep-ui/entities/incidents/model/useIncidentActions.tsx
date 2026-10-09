@@ -15,7 +15,8 @@ type UseIncidentActionsValue = {
   changeStatus: (
     incidentId: string,
     status: Status,
-    comment?: string
+    comment?: string,
+    expectedRevision?: number
   ) => Promise<void>;
   changeSeverity: (
     incidentId: string,
@@ -244,7 +245,7 @@ export function useIncidentActions(): UseIncidentActionsValue {
   );
 
   const changeStatus = useCallback(
-    async (incidentId: string, status: Status, comment?: string) => {
+    async (incidentId: string, status: Status, comment?: string, expectedRevision?: number) => {
       if (!status) {
         showErrorToast(new Error("Please select a new status."));
         return;
@@ -254,6 +255,7 @@ export function useIncidentActions(): UseIncidentActionsValue {
         const result = await api.post(`/incidents/${incidentId}/status`, {
           status,
           comment,
+          expected_revision: expectedRevision,
         });
 
         toast.success("Incident status changed successfully!");
@@ -261,7 +263,8 @@ export function useIncidentActions(): UseIncidentActionsValue {
         mutateIncident(incidentId);
         return result;
       } catch (error) {
-        showErrorToast(error, "Failed to change incident status");
+        mutateIncident(incidentId);
+        throw error;
       }
     },
     [api, mutateIncident, mutateIncidentsList]

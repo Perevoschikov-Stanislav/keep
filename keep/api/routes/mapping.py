@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from keep.api.bl.enrichments_bl import EnrichmentsBl
 from keep.api.core.db import get_session
+from keep.api.core.incident_configuration import managed_metadata, require_unmanaged
 from keep.api.models.db.enrichment_event import EnrichmentEventWithLogs
 from keep.api.models.db.mapping import (
     MappingRule,
@@ -19,6 +20,7 @@ from keep.api.models.db.topology import TopologyService
 from keep.api.utils.pagination import EnrichmentEventPaginatedResultsDto
 from keep.identitymanager.authenticatedentity import AuthenticatedEntity
 from keep.identitymanager.identitymanagerfactory import IdentityManagerFactory
+from keep.identitymanager.team_access import visible_team_ids
 
 router = APIRouter()
 
@@ -46,6 +48,7 @@ def get_rules(
     if rules:
         for rule in rules:
             rule_dto = MappingRuleDtoOut(**rule.model_dump())
+            rule_dto.iac = managed_metadata(session, authenticated_entity.tenant_id, "mappings", rule.id)
 
             attributes = []
             if rule_dto.type == "csv":
@@ -89,7 +92,7 @@ def get_rule(
     )
     if rule is None:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return MappingRuleDtoOut(**rule.model_dump())
+    return MappingRuleDtoOut(**rule.model_dump(), iac=managed_metadata(session, authenticated_entity.tenant_id, "mappings", rule.id))
 
 
 @router.post(
@@ -136,11 +139,13 @@ def delete_rule(
         session.query(MappingRule)
         .filter(MappingRule.id == rule_id)
         .filter(MappingRule.tenant_id == authenticated_entity.tenant_id)
+        .with_for_update()
         .first()
     )
     if rule is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
+    require_unmanaged(session, authenticated_entity.tenant_id, "mappings", rule.id)
     if rule.is_provisioned:
         raise HTTPException(
             status_code=409,
@@ -169,10 +174,12 @@ def update_rule(
             MappingRule.tenant_id == authenticated_entity.tenant_id,
             MappingRule.id == rule_id,
         )
+        .with_for_update()
         .first()
     )
     if existing_rule is None:
         raise HTTPException(status_code=404, detail="Rule not found")
+    require_unmanaged(session, authenticated_entity.tenant_id, "mappings", existing_rule.id)
     if existing_rule.is_provisioned:
         raise HTTPException(
             status_code=409,
@@ -217,8 +224,13 @@ def get_enrichment_events(
         },
     )
     enrichment_bl = EnrichmentsBl(tenant_id=authenticated_entity.tenant_id)
-    events = enrichment_bl.get_enrichment_events(rule_id, limit, offset)
-    total_count = enrichment_bl.get_total_enrichment_events(rule_id)
+    allowed_team_ids = visible_team_ids(authenticated_entity)
+    events = enrichment_bl.get_enrichment_events(
+        rule_id, limit, offset, allowed_team_ids=allowed_team_ids
+    )
+    total_count = enrichment_bl.get_total_enrichment_events(
+        rule_id, allowed_team_ids=allowed_team_ids
+    )
     logger.info(
         "Got enrichment events",
         extra={"events_count": len(events)},
@@ -251,7 +263,9 @@ def get_enrichment_event_logs(
         },
     )
     enrichment_bl = EnrichmentsBl(tenant_id=authenticated_entity.tenant_id)
-    enrichment_event = enrichment_bl.get_enrichment_event(enrichment_event_id)
+    enrichment_event = enrichment_bl.get_enrichment_event(
+        enrichment_event_id, allowed_team_ids=visible_team_ids(authenticated_entity)
+    )
     logs = enrichment_bl.get_enrichment_event_logs(enrichment_event_id)
     if not logs:
         raise HTTPException(status_code=404, detail="Logs not found")

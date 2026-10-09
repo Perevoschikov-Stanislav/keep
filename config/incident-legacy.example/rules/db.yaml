@@ -1,0 +1,18 @@
+ruleName: db
+sqlQuery:
+  sql: family == "db" && has(labels.namespace)
+  params: {}
+celQuery: family == "db" && has(labels.namespace)
+timeframeInSeconds: 10800
+timeUnit: seconds
+groupingCriteria:
+- zone
+- cluster
+- namespace
+- svc
+resolveOn: all_resolved
+createOn: any
+incidentNameTemplate: '{{ alert.cluster }} · {{ alert.namespace }} · {{ alert.svc
+  }}: {{ alert.alertname }}'
+requireApprove: false
+threshold: 1

@@ -1,3 +1,4 @@
+import { useUserPermissions } from "@/shared/lib/hooks/useUserPermissions";
 import { AlertDto, Status, Severity } from "@/entities/alerts/model"; // Adjust the import path as needed
 import Modal from "@/components/ui/Modal"; // Ensure this path matches your project structure
 import { Button, Switch, Text, Callout } from "@tremor/react";
@@ -59,7 +60,9 @@ export const ViewAlertModal: React.FC<ViewAlertModalProps> = ({
 }) => {
   const isOpen = !!alert;
   const [showHighlightedOnly, setShowHighlightedOnly] = useState(false);
-  const [isEditable, setIsEditable] = useState(false);
+  const [requestedEditable, setIsEditable] = useState(false);
+  const { can } = useUserPermissions();
+  const isEditable = requestedEditable && !!alert && can("update:alert", alert);
   const [editorValue, setEditorValue] = useState("");
   const [originalValue, setOriginalValue] = useState("");
   const [hasChanges, setHasChanges] = useState(false);

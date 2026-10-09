@@ -1,0 +1,127 @@
+api_version: keep.incidents/v1
+kind: IncidentPolicies
+id: core-legacy-compatibility
+tenant_id: keep
+revision: core-20261007-lab-only
+keep_url: http://localhost:8000
+access:
+  path: teams.yaml
+    sha256: bc3363bfbe45b6f2742b05a483c989d0801ec7d8cf3394834beba11a62d98660
+runtime_ownership:
+- team_id: ops
+  domain: legacy
+  notifications: legacy
+  legacy_snooze: legacy
+- team_id: it
+  domain: legacy
+  notifications: legacy
+  legacy_snooze: legacy
+- team_id: null
+  domain: legacy
+  notifications: legacy
+  legacy_snooze: legacy
+- team_id: quarantine
+  domain: legacy
+  notifications: legacy
+  legacy_snooze: legacy
+mappings:
+- id: families
+  artifact:
+    path: mappings/families.yaml
+    sha256: 5cc2983bedca56572b367279960d9e0127b702212bb39e6e5f1101575506abd9
+- id: zone-hosts
+  artifact:
+    path: mappings/zone-hosts.yaml
+    sha256: 53463ead0a3a90cb903539941951744ca5f616cb4302aa5a79f9fca12b1dcda7
+- id: zone-namespaces
+  artifact:
+    path: mappings/zone-namespaces.yaml
+    sha256: d9d0d128abbdded08d9e25bd4950c34043cf1960c228b19eb9fc3eb1176512b7
+- id: zones
+  artifact:
+    path: mappings/zones.yaml
+    sha256: 11d893e2c79d97a966195222e1f58fd6fad89a479b07b8d11d04acfa3a88e6e9
+extraction:
+- id: svc
+  artifact:
+    path: extraction/svc.yaml
+    sha256: 98ca911fd218431136f963750aba1cf25a58b755d175984bb98b3a670d87b051
+- id: svc-pvc
+  artifact:
+    path: extraction/svc-pvc.yaml
+    sha256: eb604b2ade6906231e0033be9a019ec788e05b62ab180e34f3c4624ffc0dec19
+rules:
+- id: lis-case
+  artifact:
+    path: rules/lis-case.yaml
+    sha256: fe5f4e7ef08371222d31b1c9c265e5c60207cb5559b26c833362be9ca11e761d
+- id: lis
+  artifact:
+    path: rules/lis.yaml
+    sha256: 83168cb1f8eaf5f689322fd65271f3ccaaf4879b2828b80fe6b2cbc917f1e96e
+- id: workload
+  artifact:
+    path: rules/workload.yaml
+    sha256: b84464c53e141521f9951001dcd2c8b6bf963bf7c2585f7275a79264bdb3f40f
+- id: probe-stands
+  artifact:
+    path: rules/probe-stands.yaml
+    sha256: 08b97d322fbf166cd268f4c9e4c6be96fb4ec67e4c2f2800e539a549e9201673
+- id: probe
+  artifact:
+    path: rules/probe.yaml
+    sha256: 509d7dfed43c7f4471bf0622f6b8eb3ff8926b8ea528622083b85544ad8b5ffc
+- id: k8s-node
+  artifact:
+    path: rules/k8s-node.yaml
+    sha256: e2870c9856a80a42060a1d8e89e462d4518f3c6b9dd06077b78b54358ab30be1
+- id: node
+  artifact:
+    path: rules/node.yaml
+    sha256: 38d574b7ed3fba7b6134e8914e8f91b88e3a501613071131f2654f4e2fecb7f5
+- id: longhorn
+  artifact:
+    path: rules/longhorn.yaml
+    sha256: 9ac712b35449f2fdde1767fd14403d75b6610935a6624eb02a336ffb995e8ceb
+- id: storage-pvc
+  artifact:
+    path: rules/storage-pvc.yaml
+    sha256: e9edc0df0671bde65fe205486c1fcc78e4490652d5eeeddb32297b5da288022c
+- id: storage-host
+  artifact:
+    path: rules/storage-host.yaml
+    sha256: 2ac8c5bf0824e27f2df97ba38fddfa6663bfaed8c63e2ff2e81a5ee18060f216
+- id: storage
+  artifact:
+    path: rules/storage.yaml
+    sha256: bc817ae665de4e90d25c4d2a83c6bcaf0208830862252e099544dd833e5b0714
+- id: db
+  artifact:
+    path: rules/db.yaml
+    sha256: c004b93b237b7a473116225711abe514d3c23947e6dfbacb94c427a00df0aa50
+- id: kafka
+  artifact:
+    path: rules/kafka.yaml
+    sha256: 069de793d0dcd186e3c6fbe9c733b9ccd3adbe4118cd93ae58e7d63554a78e11
+- id: other-namespace
+  artifact:
+    path: rules/other-namespace.yaml
+    sha256: d6310d989648c02df536785af6953e4b4f7602256496692333d5ddc33ce76cdd
+- id: other
+  artifact:
+    path: rules/other.yaml
+    sha256: e709972914d888e6b4e185dd378e07d03460d3eabab0dfb09a861cdfb724c7b9
+- id: unlabeled
+  artifact:
+    path: rules/unlabeled.yaml
+    sha256: f962ab13636a99f90ff5b5778d0b796e5ad5f6ce4b8e3b88678ca10ebeeac548
+workflows:
+- id: incident-open
+  artifact:
+    path: workflows/incident-open.yaml
+    sha256: d75225d9271a5d8700ed5b435c76171e6caeb1868d6fae7959a5dacc4007f67d
+- id: incident-update
+  artifact:
+    path: workflows/incident-update.yaml
+    sha256: 746451819b3742348f9e3f5ee4b1a312326d8a06dceeb6a6d76837518b7cc64f
+adoptions: []

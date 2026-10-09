@@ -160,6 +160,7 @@ export const V2ActionSchema = z.object({
     actionParams: z.array(z.string()),
     config: z.string().optional(),
     if: z.string().optional(),
+    notification: z.boolean().optional(),
     vars: z.record(z.string(), z.string()).optional(),
     with: WithSchema.optional(),
     "on-failure": OnFailureSchema.optional(),

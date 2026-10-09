@@ -17,10 +17,12 @@ from sqlmodel import col, desc
 
 from keep.api.models.db.incident import Incident, IncidentSeverity, IncidentStatus
 from keep.api.models.db.rule import ResolveOn, Rule
+from keep.api.models.silence import SilenceMetadata
 
 
 class IncidentStatusChangeDto(BaseModel):
     status: IncidentStatus
+    expected_revision: int | None = Field(default=None, ge=0)
     comment: str | None
     tagged_users: list[str] = []
     
@@ -40,6 +42,7 @@ class IncidentSeverityChangeDto(BaseModel):
 
 
 class IncidentDtoIn(BaseModel):
+    team_id: str | None = None
     user_generated_name: str | None
     assignee: str | None
     user_summary: str | None
@@ -80,6 +83,13 @@ class IncidentDto(IncidentDtoIn):
 
     generated_summary: str | None
     ai_generated_name: str | None
+    generated_name: str | None = None
+    normalized: dict | None = None
+    correlation: dict | None = None
+    lifecycle: dict | None = None
+    automation: dict | None = None
+    normalization: dict | None = None
+    presentation: dict | None = None
 
     rule_fingerprint: str | None
     fingerprint: (
@@ -93,6 +103,8 @@ class IncidentDto(IncidentDtoIn):
     merged_at: datetime.datetime | None
 
     enrichments: dict | None = {}
+    dismissed: bool = False
+    silence: SilenceMetadata | None = None
     incident_type: str | None
     incident_application: str | None
 
@@ -134,7 +146,7 @@ class IncidentDto(IncidentDtoIn):
 
     @property
     def name(self):
-        return self.user_generated_name or self.ai_generated_name
+        return self.user_generated_name or self.generated_name or self.ai_generated_name
 
     @property
     def alerts(self) -> List:
@@ -171,7 +183,7 @@ class IncidentDto(IncidentDtoIn):
         return values
 
     @classmethod
-    def from_db_incident(cls, db_incident: "Incident", rule: "Rule" = None):
+    def from_db_incident(cls, db_incident: "Incident", rule: "Rule" = None, *, session=None, with_silences=True):
 
         severity = (
             IncidentSeverity.from_number(db_incident.severity)
@@ -179,12 +191,9 @@ class IncidentDto(IncidentDtoIn):
             else db_incident.severity
         )
 
-        # some default value for resolve_on
-        if not db_incident.resolve_on:
-            db_incident.resolve_on = ResolveOn.ALL.value
-
         dto = cls(
             id=db_incident.id,
+            team_id=db_incident.team_id,
             user_generated_name=db_incident.user_generated_name,
             ai_generated_name=db_incident.ai_generated_name,
             user_summary=db_incident.user_summary,
@@ -211,7 +220,7 @@ class IncidentDto(IncidentDtoIn):
             incident_type=db_incident.incident_type,
             incident_application=str(db_incident.incident_application),
             enrichments=db_incident.enrichments,
-            resolve_on=db_incident.resolve_on,
+            resolve_on=db_incident.resolve_on or ResolveOn.ALL.value,
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
             rule_is_deleted=rule.is_deleted if rule else None,
@@ -223,6 +232,33 @@ class IncidentDto(IncidentDtoIn):
         if db_incident.enrichments:
             dto = dto.copy(update=db_incident.enrichments)
 
+        dto.team_id = db_incident.team_id
+        dto.id = db_incident.id
+        dto.status = IncidentStatus(db_incident.status)
+        dto.assignee = db_incident.assignee
+        import copy
+        dto.correlation = copy.deepcopy(db_incident.correlation_context) if db_incident.correlation_context and db_incident.correlation_context.get("team_id") == db_incident.team_id else None
+        from keep.api.core.incident_lifecycle import project
+        dto.lifecycle = project(db_incident)
+        from keep.api.core.incident_automation import project as automation_project
+        dto.automation = automation_project(db_incident)
+        dto.__dict__.pop("automation_context", None)
+        dto.__dict__.pop("notification_context", None)
+        from keep.api.core.event_normalization import project_incident
+        for key, value in project_incident(db_incident.tenant_id, db_incident).items():
+            setattr(dto, key, value)
+        if isinstance(dto.dismissed, str):
+            dto.dismissed = dto.dismissed.lower() == "true"
+        dto.silence = None
+        if with_silences:
+            from keep.api.bl.silences_evaluator import SilenceEvaluator
+            from keep.api.core.db import existed_or_new_session
+
+            with existed_or_new_session(session) as silence_session:
+                evaluator = SilenceEvaluator(silence_session, db_incident.tenant_id)
+                dto.silence = evaluator.metadata(evaluator.incidents([db_incident])[db_incident.id])
+                dto.dismissed = dto.dismissed or dto.silence.silenced
+
         return dto
 
     def to_db_incident(self) -> "Incident":
@@ -231,6 +267,7 @@ class IncidentDto(IncidentDtoIn):
 
         db_incident = Incident(
             id=self.id,
+            team_id=self.team_id,
             user_generated_name=self.user_generated_name,
             ai_generated_name=self.ai_generated_name,
             user_summary=self.user_summary,

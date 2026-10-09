@@ -352,6 +352,14 @@ class AuthVerifierBase:
             HTTPException: If the API key is invalid.
         """
         self.logger.debug("Verifying API key")
+        from keep.api.core.silence_integrations import IntegrationConfigurationError, get_silence_integrations
+
+        try:
+            integrations = get_silence_integrations()
+            if integrations and integrations.matching_clients(api_key):
+                raise HTTPException(status_code=403, detail="Registered integration credentials require a delegated API")
+        except IntegrationConfigurationError:
+            raise HTTPException(status_code=503, detail="Integration configuration unavailable") from None
         tenant_api_key = get_api_key(api_key)
         if not tenant_api_key:
             self.logger.warning("Invalid API Key")
