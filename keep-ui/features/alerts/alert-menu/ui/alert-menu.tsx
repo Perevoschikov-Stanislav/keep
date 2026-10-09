@@ -173,7 +173,7 @@ export function AlertMenu({
 
       if (params.newParams) {
         Object.entries(params.newParams).forEach(([key, value]) =>
-          currentParams.append(key, value)
+          currentParams.set(key, value)
         );
       }
 

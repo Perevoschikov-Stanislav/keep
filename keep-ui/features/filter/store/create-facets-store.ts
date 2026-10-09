@@ -67,7 +67,16 @@ export type FacetsPanelState = {
 export const createFacetsPanelStore = () =>
   createStore<FacetsPanelState>((set, state) => ({
     facetsConfig: null,
-    setFacetsConfig: (facetsConfig: FacetsConfig) => set({ facetsConfig }),
+    setFacetsConfig: (facetsConfig: FacetsConfig) => {
+      const activeFacetIds = { ...(state().activeFacetIds || {}) };
+      const currentFacets = state().facets || [];
+      currentFacets.forEach((facet) => {
+        if (facetsConfig?.[facet.id]?.isOpenByDefault) {
+          activeFacetIds[facet.id] = true;
+        }
+      });
+      set({ facetsConfig, activeFacetIds });
+    },
 
     facets: null,
     setFacets: (facets: FacetDto[]) => {
@@ -86,9 +95,13 @@ export const createFacetsPanelStore = () =>
       // explicitly lazy AND not static; static facets (severity/status/source)
       // must always render their values on load. Only non-static lazy facets
       // (high-cardinality user-defined facets) are deferred (#6577).
+      // Also facets that are open by default are active immediately.
       facets.forEach((facet) => {
         const isNewlyAdded = !isInitialLoad && !previousFacetIds.has(facet.id);
-        if (!isLazyFacet(facet) || isNewlyAdded) {
+        const isOpenByDefault =
+          facet.is_open_by_default ||
+          state().facetsConfig?.[facet.id]?.isOpenByDefault;
+        if (!isLazyFacet(facet) || isNewlyAdded || isOpenByDefault) {
           activeFacetIds[facet.id] = true;
         }
       });

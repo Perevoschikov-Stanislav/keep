@@ -181,7 +181,7 @@ jest.mock("@/entities/workflows", () => ({
   useWorkflowStore: () => mockedUseWorkflowStore(),
 }));
 
-const mockConfig: InternalConfig = {
+const mockConfig: Partial<InternalConfig> = {
   API_URL: "http://localhost:8000",
   API_URL_CLIENT: "http://localhost:8000",
   AUTH_TYPE: "test",

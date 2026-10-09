@@ -9,13 +9,21 @@ import {FieldHeader} from "@/shared/ui";
 
 interface EnrichmentEditableFormProps {
   fields: Record<string, string>;
-  title: string,
+  title: string;
   onUpdate: (fields: Record<string, string>) => void;
   onDelete?: (fields: string[]) => void;
   children: React.ReactNode;
+  readOnly?: boolean;
 }
 
-export const EnrichmentEditableForm = ({fields, title, onUpdate, onDelete, children}: EnrichmentEditableFormProps) => {
+export const EnrichmentEditableForm = ({
+  fields,
+  title,
+  onUpdate,
+  onDelete,
+  children,
+  readOnly = false,
+}: EnrichmentEditableFormProps) => {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [newFields, setNewFields] = useState<Record<string, string>>(fields);
@@ -51,31 +59,35 @@ export const EnrichmentEditableForm = ({fields, title, onUpdate, onDelete, child
 
       {children}
 
-      <Button
-        variant="light"
-        className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
-        tooltip="Edit"
-        onClick={handleOpenForm}
-        icon={() => (
-          <Icon
-            icon={MdModeEdit}
-            className={`w-4 h-4 text-orange-500`}
-          />
-        )}
-      />
+      {!readOnly && (
+        <Button
+          variant="light"
+          className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
+          tooltip="Edit"
+          onClick={handleOpenForm}
+          icon={() => (
+            <Icon
+              icon={MdModeEdit}
+              className={`w-4 h-4 text-orange-500`}
+            />
+          )}
+        />
+      )}
 
-      {(onDelete && some(Object.values(fields))) && <Button
-        variant="light"
-        className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
-        tooltip="Un-enrich"
-        onClick={() => onDelete(Object.keys(fields))}
-        icon={() => (
-          <Icon
-            icon={FiTrash2}
-            className={`w-4 h-4 text-red-500`}
-          />
-        )}
-      />}
+      {!readOnly && onDelete && some(Object.values(fields)) && (
+        <Button
+          variant="light"
+          className="text-gray-500 leading-none p-2 rounded-md prevent-row-click hover:bg-slate-200 [&>[role='tooltip']]:z-50 transition-opacity duration-100 opacity-0 group-hover:opacity-100"
+          tooltip="Un-enrich"
+          onClick={() => onDelete(Object.keys(fields))}
+          icon={() => (
+            <Icon
+              icon={FiTrash2}
+              className={`w-4 h-4 text-red-500`}
+            />
+          )}
+        />
+      )}
     </div>
 
     <Modal

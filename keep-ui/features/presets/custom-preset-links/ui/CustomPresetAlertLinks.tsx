@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback } from "react";
+import { CSSProperties, useCallback, useMemo } from "react";
 import { usePresets, useSilencedPresets } from "@/entities/presets/model";
 import { AiOutlineSwap } from "react-icons/ai";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,6 +17,9 @@ import { SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AiOutlineSound } from "react-icons/ai";
 import { AiFillSound } from "react-icons/ai";
+import { IoChevronUp } from "react-icons/io5";
+import { useLocalStorage } from "utils/hooks/useLocalStorage";
+import { useConfig } from "@/utils/hooks/useConfig";
 // import css
 import "./CustomPresetAlertLink.css";
 import clsx from "clsx";
@@ -138,6 +141,8 @@ type CustomPresetAlertLinksProps = {
   selectedTags: string[];
 };
 
+const emptyTagsOrder: string[] = [];
+
 export const CustomPresetAlertLinks = ({
   selectedTags,
 }: CustomPresetAlertLinksProps) => {
@@ -152,6 +157,19 @@ export const CustomPresetAlertLinks = ({
 
   const pathname = usePathname();
   const router = useRouter();
+  const { data: config } = useConfig();
+  const defaultTagsOrder = config?.DEFAULT_PRESET_TAGS_ORDER ?? emptyTagsOrder;
+
+  const [tagSectionsState, setTagSectionsState] = useLocalStorage<
+    Record<string, boolean>
+  >("preset-tag-sections-state", {});
+
+  const toggleSection = (tag: string, currentState: boolean) => {
+    setTagSectionsState({
+      ...tagSectionsState,
+      [tag]: !currentState,
+    });
+  };
 
   // Check for noisy presets and control sound playback
   const anyNoisyNow = presets?.some((preset) => preset.should_do_noise_now);
@@ -163,6 +181,40 @@ export const CustomPresetAlertLinks = ({
       : presets.filter((preset) =>
           preset.tags.some((tag) => selectedTags.includes(tag.name))
         );
+
+  const groupedPresets = useMemo(() => {
+    const groups: Record<string, Preset[]> = {};
+    const untagged: Preset[] = [];
+
+    for (const preset of filteredOrderedPresets) {
+      if (preset.tags && preset.tags.length > 0) {
+        const primaryTag = preset.tags[0].name.trim();
+        if (!groups[primaryTag]) {
+          groups[primaryTag] = [];
+        }
+        groups[primaryTag].push(preset);
+      } else {
+        untagged.push(preset);
+      }
+    }
+
+    const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+      const idxA = defaultTagsOrder.indexOf(a);
+      const idxB = defaultTagsOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    return {
+      sortedGroupKeys,
+      groups,
+      untagged,
+    };
+  }, [filteredOrderedPresets, defaultTagsOrder]);
+
+  const hasTagGroups = groupedPresets.sortedGroupKeys.length > 0;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -216,15 +268,85 @@ export const CustomPresetAlertLinks = ({
       onDragEnd={onDragEnd}
     >
       <SortableContext key="preset-alerts" items={presets}>
-        {filteredOrderedPresets.map((preset) => (
-          <AlertPresetLink
-            key={preset.id}
-            preset={preset}
-            pathname={pathname}
-            isDeletable={true}
-            deletePreset={deletePresetAndRedirect}
-          />
-        ))}
+        {hasTagGroups ? (
+          <>
+            {groupedPresets.sortedGroupKeys.map((groupName) => {
+              const groupPresets = groupedPresets.groups[groupName];
+              const isOpen = tagSectionsState[groupName] ?? true;
+
+              return (
+                <li key={groupName} className="mt-2 mb-1 list-none">
+                  <button
+                    type="button"
+                    className="w-full flex justify-between items-center px-2 py-1 text-slate-500 hover:text-slate-800 transition-colors select-none"
+                    onClick={() => toggleSection(groupName, isOpen)}
+                  >
+                    <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-600">
+                      {groupName}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        {groupPresets.length}
+                      </span>
+                      <IoChevronUp
+                        className={clsx(
+                          "w-3 h-3 text-slate-400 transition-transform",
+                          {
+                            "rotate-180": isOpen,
+                          }
+                        )}
+                      />
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <ul className="space-y-0.5 pl-1">
+                      {groupPresets.map((preset) => (
+                        <AlertPresetLink
+                          key={preset.id}
+                          preset={preset}
+                          pathname={pathname}
+                          isDeletable={true}
+                          deletePreset={deletePresetAndRedirect}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+
+            {groupedPresets.untagged.length > 0 && (
+              <li className="mt-2 mb-1 list-none">
+                {groupedPresets.sortedGroupKeys.length > 0 && (
+                  <div className="px-2 py-1 text-[11px] font-semibold tracking-wider uppercase text-slate-400">
+                    General
+                  </div>
+                )}
+                <ul className="space-y-0.5 pl-1">
+                  {groupedPresets.untagged.map((preset) => (
+                    <AlertPresetLink
+                      key={preset.id}
+                      preset={preset}
+                      pathname={pathname}
+                      isDeletable={true}
+                      deletePreset={deletePresetAndRedirect}
+                    />
+                  ))}
+                </ul>
+              </li>
+            )}
+          </>
+        ) : (
+          filteredOrderedPresets.map((preset) => (
+            <AlertPresetLink
+              key={preset.id}
+              preset={preset}
+              pathname={pathname}
+              isDeletable={true}
+              deletePreset={deletePresetAndRedirect}
+            />
+          ))
+        )}
       </SortableContext>
       <PresetsNoise presets={presets}></PresetsNoise>
     </DndContext>

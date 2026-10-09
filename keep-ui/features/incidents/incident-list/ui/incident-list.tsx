@@ -35,7 +35,9 @@ import {
   IncidentsNotFoundPlaceholder,
 } from "./incidents-not-found";
 import { v4 as uuidV4 } from "uuid";
-import { FacetsConfig } from "@/features/filter/models";
+import { FacetsConfig, FacetDto } from "@/features/filter/models";
+import { splitFacetValues } from "@/features/filter/store/use-query-params/split-facet-values";
+import { useSearchParams } from "next/navigation";
 import EnhancedDateRangePicker, {
   TimeFrame,
 } from "@/components/ui/DateRangePicker";
@@ -46,6 +48,7 @@ import {
   DEFAULT_INCIDENTS_CHECKED_OPTIONS,
 } from "@/entities/incidents/model/models";
 import { DynamicImageProviderIcon } from "@/components/ui";
+import { useConfig } from "@/utils/hooks/useConfig";
 import { useIncidentsTableData } from "./useIncidentsTableData";
 import EnhancedDateRangePickerV2, {
   AllTimeFrame,
@@ -58,12 +61,61 @@ const AssigneeLabel = ({ email }: { email: string }) => {
   return user ? user.name : email;
 };
 
+function getInitialFilterCel(
+  searchParams: URLSearchParams | null,
+  initialFacets?: FacetDto[],
+  defaultStatuses: string[] = DEFAULT_INCIDENTS_CHECKED_OPTIONS
+): string {
+  const parts: string[] = [];
+
+  const statusParam = searchParams?.get("facet_status");
+  if (statusParam) {
+    const values = splitFacetValues(statusParam).map(
+      (v) => `'${v.replace(/^'|'$/g, "")}'`
+    );
+    if (values.length) {
+      parts.push(`(status in [${values.join(", ")}])`);
+    }
+  } else {
+    parts.push(
+      `(status in [${defaultStatuses.map((opt) => "'" + opt + "'").join(", ")}])`
+    );
+  }
+
+  if (searchParams && initialFacets) {
+    initialFacets.forEach((facet) => {
+      if (facet.property_path === "status") return;
+      const paramName = `facet_${facet.property_path.replace(/\./g, "_")}`;
+      const paramValue = searchParams.get(paramName);
+      if (paramValue) {
+        const values = splitFacetValues(paramValue).map(
+          (v) => `'${v.replace(/^'|'$/g, "")}'`
+        );
+        if (values.length) {
+          parts.push(`(${facet.property_path} in [${values.join(", ")}])`);
+        }
+      }
+    });
+  }
+
+  return parts.join(" && ");
+}
+
 export function IncidentList({
   initialFacetsData,
 }: {
   initialData?: PaginatedIncidentsDto;
   initialFacetsData?: InitialFacetsData;
 }) {
+  const searchParams = useSearchParams();
+  const { data: config } = useConfig();
+  const defaultIncidentStatuses = useMemo(() => {
+    return (
+      config?.DEFAULT_INCIDENTS_STATUS_FILTER ||
+      DEFAULT_INCIDENTS_CHECKED_OPTIONS
+    );
+  }, [config?.DEFAULT_INCIDENTS_STATUS_FILTER]);
+
   const [incidentsPagination, setIncidentsPagination] =
     useState<PaginationState>({
       limit: DEFAULT_INCIDENTS_PAGE_SIZE,
@@ -74,7 +126,13 @@ export function IncidentList({
     DEFAULT_INCIDENTS_SORTING,
   ]);
 
-  const [filterCel, setFilterCel] = useState<string | null>(null);
+  const [filterCel, setFilterCel] = useState<string | null>(() =>
+    getInitialFilterCel(
+      searchParams ? new URLSearchParams(searchParams.toString()) : null,
+      initialFacetsData?.facets,
+      defaultIncidentStatuses
+    )
+  );
 
   const [dateRange, setDateRange] = useTimeframeState({
     enableQueryParams: true,
@@ -130,7 +188,7 @@ export function IncidentList({
   };
 
   const facetsConfig: FacetsConfig = useMemo(() => {
-    return {
+    const configResult: FacetsConfig = {
       ["Severity"]: {
         canHitEmptyState: false,
         renderOptionLabel: (facetOption) => {
@@ -151,7 +209,7 @@ export function IncidentList({
           reverseSeverityMapping[facetOption.value] || 100, // if status is not in the mapping, it should be at the end
       },
       ["Status"]: {
-        checkedByDefaultOptionValues: DEFAULT_INCIDENTS_CHECKED_OPTIONS,
+        checkedByDefaultOptionValues: defaultIncidentStatuses,
         renderOptionIcon: (facetOption) => (
           <Icon
             icon={getStatusIcon(facetOption.display_name)}
@@ -216,7 +274,17 @@ export function IncidentList({
             : "No",
       },
     };
-  }, []);
+
+    const openFacets = config?.DEFAULT_OPEN_FACETS || [];
+    openFacets.forEach((facetName) => {
+      if (!configResult[facetName]) {
+        configResult[facetName] = {};
+      }
+      configResult[facetName].isOpenByDefault = true;
+    });
+
+    return configResult;
+  }, [defaultIncidentStatuses, config?.DEFAULT_OPEN_FACETS]);
 
   const handleClearFilters = () => {
     setDateRange({

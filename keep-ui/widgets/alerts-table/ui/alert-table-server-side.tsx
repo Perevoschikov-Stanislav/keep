@@ -61,6 +61,7 @@ import { FacetsConfig } from "@/features/filter/models";
 import { TimeFormatOption } from "@/widgets/alerts-table/lib/alert-table-time-format";
 import { PushAlertToServerModal } from "@/features/alerts/simulate-alert";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { splitFacetValues } from "@/features/filter/store/use-query-params/split-facet-values";
 import { GrTest } from "react-icons/gr";
 import { PlusIcon } from "@heroicons/react/20/solid";
 import { DynamicImageProviderIcon } from "@/components/ui";
@@ -140,7 +141,40 @@ export function AlertTableServerSide({
     null
   );
   const [grouping, setGrouping] = useState<GroupingState>([]);
-  const [filterCel, setFilterCel] = useState<string | null>(null);
+
+  const searchParams = useSearchParams();
+  const { data: configData } = useConfig();
+  const isFeedPreset = presetName?.toLowerCase() === "feed";
+  const defaultFeedStatuses = useMemo(
+    () =>
+      configData?.DEFAULT_FEED_STATUS_FILTER || [
+        "firing",
+        "acknowledged",
+        "suppressed",
+        "pending",
+      ],
+    [configData?.DEFAULT_FEED_STATUS_FILTER]
+  );
+
+  const getInitialAlertsFilterCel = () => {
+    const statusParam = searchParams?.get("facet_status");
+    if (statusParam) {
+      const values = splitFacetValues(statusParam).map(
+        (v) => `'${v.replace(/^'|'$/g, "")}'`
+      );
+      if (values.length) {
+        return `(status in [${values.join(", ")}])`;
+      }
+    }
+    if (isFeedPreset) {
+      return `(status in [${defaultFeedStatuses.map((s) => "'" + s + "'").join(", ")}])`;
+    }
+    return null;
+  };
+
+  const [filterCel, setFilterCel] = useState<string | null>(
+    getInitialAlertsFilterCel
+  );
   const [mappingCel, setMappingCel] = useState<string>("");
   const [searchCel, setSearchCel] = useState<string | null>(null);
 
@@ -176,7 +210,6 @@ export function AlertTableServerSide({
   });
   
   const a11yContainerRef = useRef<HTMLDivElement | null>(null);
-  const { data: configData } = useConfig();
   const noisyAlertsEnabled = configData?.NOISY_ALERTS_ENABLED;
   const { theme } = useAlertTableTheme();
   const { severityMapping: severityMappingConfig } = useSeverityMapping();
@@ -339,7 +372,7 @@ export function AlertTableServerSide({
   };
 
   const facetsConfig: FacetsConfig = useMemo(() => {
-    return {
+    const config: FacetsConfig = {
       ["Severity"]: {
         canHitEmptyState: true,
         renderOptionLabel: (facetOption) => {
@@ -361,6 +394,9 @@ export function AlertTableServerSide({
       },
       ["Status"]: {
         canHitEmptyState: true,
+        checkedByDefaultOptionValues: isFeedPreset
+          ? defaultFeedStatuses
+          : undefined,
         renderOptionIcon: (facetOption) => (
           <Icon
             icon={getStatusIcon(facetOption.display_name)}
@@ -418,14 +454,24 @@ export function AlertTableServerSide({
         ),
       },
     };
-  }, []);
+
+    // Mark default open facets as open by default (if configured)
+    const openFacets = configData?.DEFAULT_OPEN_FACETS || [];
+    openFacets.forEach((facetName) => {
+      if (!config[facetName]) {
+        config[facetName] = {};
+      }
+      config[facetName].isOpenByDefault = true;
+    });
+
+    return config;
+  }, [isFeedPreset, defaultFeedStatuses, configData?.DEFAULT_OPEN_FACETS]);
 
   const [isCreateIncidentWithAIOpen, setIsCreateIncidentWithAIOpen] =
     useState<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
   // handle "create incident with AI from last 25 alerts" if ?createIncidentsFromLastAlerts=25
-  const searchParams = useSearchParams();
   useEffect(() => {
     if (alerts.length === 0 && selectedAlertsFingerprints.length) {
       return;

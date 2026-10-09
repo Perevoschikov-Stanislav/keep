@@ -10,6 +10,8 @@ export interface FacetConfig {
     facetOption: FacetOptionDto
   ) => React.JSX.Element | string | undefined;
   sortCallback?: (facetOption: FacetOptionDto) => number;
+  isOpenByDefault?: boolean;
+  order?: number;
 }
 
 export interface FacetsConfig {
@@ -35,9 +37,21 @@ export interface FacetDto {
   name: string;
   is_static: boolean;
   is_lazy: boolean;
+  order?: number;
+  is_open_by_default?: boolean;
 }
 
 export interface CreateFacetDto {
   property_path: string;
   name: string;
+  order?: number;
+  is_open_by_default?: boolean;
 }
+
+export interface UpdateFacetDto {
+  name?: string;
+  property_path?: string;
+  order?: number;
+  is_open_by_default?: boolean;
+}
+

@@ -8,6 +8,9 @@ import { FacetDto } from "../models";
  * discriminator here (#6577).
  */
 export function isLazyFacet(facet: FacetDto): boolean {
+  if (facet.is_open_by_default) {
+    return false;
+  }
   return !!facet.is_lazy && !facet.is_static;
 }
 

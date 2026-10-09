@@ -112,6 +112,9 @@ export const FacetsPanelServerSide: React.FC<FacetsPanelProps> = ({
           setFacetQueriesState({ ...facetQueriesState, [facetId]: "" })
         }
         onDeleteFacet={(facetId) => facetActions.deleteFacet(facetId)}
+        onUpdateFacet={(facetId, updatedFacet) =>
+          facetActions.updateFacet(facetId, updatedFacet)
+        }
         onReloadFacetOptions={(facetQueries) =>
           setFacetQueriesState({ ...facetQueries })
         }

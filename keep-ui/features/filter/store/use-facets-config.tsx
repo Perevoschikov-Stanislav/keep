@@ -31,12 +31,17 @@ export function useFacetsConfig(
       const checkedByDefaultOptionValues =
         facetConfig?.checkedByDefaultOptionValues;
       const canHitEmptyState = !!facetConfig?.canHitEmptyState;
+      const isOpenByDefault =
+        facetConfig?.isOpenByDefault ?? facet.is_open_by_default;
+      const order = facetConfig?.order ?? facet.order;
       result[facet.id] = {
         sortCallback,
         renderOptionIcon,
         renderOptionLabel,
         checkedByDefaultOptionValues,
         canHitEmptyState,
+        isOpenByDefault,
+        order,
       };
     });
 
