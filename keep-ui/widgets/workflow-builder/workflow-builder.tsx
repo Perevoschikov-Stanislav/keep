@@ -22,6 +22,7 @@ import { WorkflowBuilderChatSafe } from "@/features/workflows/ai-assistant";
 import debounce from "lodash.debounce";
 import { getOrderedWorkflowYamlStringFromJSON } from "@/entities/workflows/lib/yaml-utils";
 import { useWorkflowSecrets } from "@/utils/hooks/useWorkflowSecrets";
+import { useConfig } from "@/utils/hooks/useConfig";
 
 interface Props {
   loadedYamlFileContents: string | null;
@@ -62,9 +63,11 @@ export function WorkflowBuilder({
     updateFromYamlString,
   } = useWorkflowStore();
   const router = useRouter();
+  const { data: config } = useConfig();
+  const ossOnly = config?.KEEP_OSS_ONLY ?? true;
 
   const [leftColumnMode, setLeftColumnMode] = useState<"yaml" | "chat" | null>(
-    "chat"
+    "yaml"
   );
 
   const searchParams = useSearchParams();
@@ -270,7 +273,7 @@ export function WorkflowBuilder({
             onChange={handleYamlChange}
           />
         </div>
-        <div
+        {!ossOnly && <div
           className={clsx(
             leftColumnMode === "chat" ? "visible h-full" : "hidden"
           )}
@@ -279,7 +282,7 @@ export function WorkflowBuilder({
             definition={definition}
             installedProviders={installedProviders ?? []}
           />
-        </div>
+        </div>}
       </>
       <>
         <div className="relative h-full">
@@ -304,7 +307,7 @@ export function WorkflowBuilder({
               </button>
             )}
           </div>
-          <div className={clsx("absolute top-10 left-0 w-10 h-10 z-50")}>
+          {!ossOnly && <div className={clsx("absolute top-10 left-0 w-10 h-10 z-50")}>
             {leftColumnMode !== "chat" ? (
               <button
                 className="flex justify-center items-center bg-white w-full h-full border-b border-r rounded-br-lg shadow-md cursor-pointer"
@@ -324,7 +327,7 @@ export function WorkflowBuilder({
                 <SparklesIcon className="size-5" />
               </button>
             )}
-          </div>
+          </div>}
           <ReactFlowProvider>
             <ReactFlowBuilder />
           </ReactFlowProvider>

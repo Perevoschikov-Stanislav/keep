@@ -14,7 +14,7 @@ except metadata.PackageNotFoundError:
     except metadata.PackageNotFoundError:
         KEEP_VERSION = os.environ.get("KEEP_VERSION", "unknown")
 
-POSTHOG_DISABLED = os.getenv("POSTHOG_DISABLED", "false").lower() == "true"
+POSTHOG_DISABLED = os.getenv("POSTHOG_DISABLED", "true").lower() == "true"
 
 POSTHOG_API_KEY = (
     os.getenv("POSTHOG_API_KEY")

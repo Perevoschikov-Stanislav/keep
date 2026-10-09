@@ -46,7 +46,6 @@ RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
     /venv/bin/python -m pip install --upgrade -r requirements.txt && \
     pip uninstall -y poetry
 COPY keep keep
-COPY ee keep/ee
 COPY examples examples
 COPY keep-ui/public/icons/unknown-icon.png unknown-icon.png
 RUN /venv/bin/pip install --use-deprecated=legacy-resolver . && \
@@ -57,7 +56,10 @@ RUN /venv/bin/pip install --use-deprecated=legacy-resolver . && \
 FROM base as final
 ENV PATH="/venv/bin:${PATH}"
 ENV VIRTUAL_ENV="/venv"
-ENV EE_PATH="ee"
+ENV EE_ENABLED="false" \
+    POSTHOG_DISABLED="true" \
+    SENTRY_DISABLED="true" \
+    KEEP_OSS_ONLY="true"
 COPY --from=builder /venv /venv
 COPY --from=builder /app/examples /examples
 COPY --from=builder /app/unknown-icon.png unknown-icon.png

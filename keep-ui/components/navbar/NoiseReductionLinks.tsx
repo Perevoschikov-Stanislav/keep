@@ -51,6 +51,7 @@ const TogglableLink = ({ children, disabledConfigKey }: TogglableLinkProps) => {
 
 export const NoiseReductionLinks = ({ session }: NoiseReductionLinksProps) => {
   const isNOCRole = session?.userRole === "noc";
+  const { data: envConfig } = useConfig();
   const { topologyData } = useTopology();
   const { data: tenantConfig, isLoading } = useTenantConfiguration();
   const noiseReductionKeys = {
@@ -184,13 +185,11 @@ export const NoiseReductionLinks = ({ session }: NoiseReductionLinksProps) => {
             </LinkWithIcon>
           </li>
         </TogglableLink>
-        <TogglableLink
-          disabledConfigKey={noiseReductionKeys.HIDE_NAVBAR_AI_PLUGINS}
-        >
-          <li>
-            <AILink></AILink>
-          </li>
-        </TogglableLink>
+        {envConfig?.KEEP_OSS_ONLY === false && (
+          <TogglableLink disabledConfigKey={noiseReductionKeys.HIDE_NAVBAR_AI_PLUGINS}>
+            <li><AILink /></li>
+          </TogglableLink>
+        )}
       </Disclosure.Panel>
     </Disclosure>
   );

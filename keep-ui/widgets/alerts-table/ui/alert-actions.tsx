@@ -178,7 +178,7 @@ export default function AlertActions({
       >
         Associate with incident
       </Button>
-      <Button
+      {config?.KEEP_OSS_ONLY === false && <Button
         icon={RocketIcon}
         size="xs"
         color="orange"
@@ -191,18 +191,18 @@ export default function AlertActions({
         disabled={!config?.OPEN_AI_API_KEY_SET}
       >
         Create incidents with AI
-      </Button>
+      </Button>}
       <AlertAssociateIncidentModal
         isOpen={isIncidentSelectorOpen}
         alerts={selectedAlerts}
         handleSuccess={handleSuccessfulAlertsAssociation}
         handleClose={hideIncidentSelector}
       />
-      <CreateIncidentWithAIModal
+      {config?.KEEP_OSS_ONLY === false && <CreateIncidentWithAIModal
         isOpen={isCreateIncidentWithAIOpen}
         alerts={selectedAlerts}
         handleClose={hideCreateIncidentWithAI}
-      />
+      />}
     </div>
   );
 }

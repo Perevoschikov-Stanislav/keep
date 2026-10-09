@@ -82,7 +82,8 @@ class IncidentReportsBl:
 
     @property
     def open_ai_client(self):
-        if not self.__open_ai_client and os.environ.get("OPENAI_API_KEY"):
+        if (not self.__open_ai_client and os.environ.get("KEEP_OSS_ONLY", "true") == "false"
+                and os.environ.get("OPENAI_API_KEY")):
             self.__open_ai_client = OpenAI()
 
         return self.__open_ai_client

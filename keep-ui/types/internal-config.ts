@@ -1,5 +1,6 @@
 export interface InternalConfig {
   AUTH_TYPE: string;
+  KEEP_OSS_ONLY: boolean;
   // Pusher
   PUSHER_DISABLED: boolean;
   PUSHER_HOST: string | undefined;

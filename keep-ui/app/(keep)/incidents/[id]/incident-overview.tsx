@@ -326,7 +326,7 @@ function Summary({
   return (
     <div>
       {formatedSummary}
-      <Button
+      {config?.KEEP_OSS_ONLY === false && <Button
         variant="secondary"
         onClick={executeTask}
         className="mt-2.5"
@@ -341,7 +341,7 @@ function Summary({
         }
       >
         AI Summary
-      </Button>
+      </Button>}
     </div>
   );
 }

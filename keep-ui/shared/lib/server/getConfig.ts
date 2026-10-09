@@ -125,6 +125,7 @@ export function getConfig(): InternalConfig {
 
   return {
     AUTH_TYPE: authType,
+    KEEP_OSS_ONLY: process.env.KEEP_OSS_ONLY !== "false",
     PUSHER_DISABLED: process.env.PUSHER_DISABLED === "true",
     // could be relative (for ingress) or absolute (e.g. Pusher)
     PUSHER_HOST: process.env.PUSHER_HOST,
@@ -141,9 +142,9 @@ export function getConfig(): InternalConfig {
     // could be relative (e.g. for ingress) or absolute (e.g. for cloud run)
     API_URL_CLIENT: API_URL_CLIENT,
     POSTHOG_KEY: process.env.POSTHOG_KEY,
-    POSTHOG_DISABLED: process.env.POSTHOG_DISABLED,
+    POSTHOG_DISABLED: process.env.POSTHOG_DISABLED || "true",
     POSTHOG_HOST: process.env.POSTHOG_HOST,
-    SENTRY_DISABLED: process.env.SENTRY_DISABLED,
+    SENTRY_DISABLED: process.env.SENTRY_DISABLED || "true",
     READ_ONLY: process.env.KEEP_READ_ONLY === "true",
     OPEN_AI_API_KEY_SET:
       !!process.env.OPEN_AI_API_KEY || !!process.env.OPENAI_API_KEY,

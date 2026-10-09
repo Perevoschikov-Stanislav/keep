@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Optional
 from uuid import UUID
 
@@ -86,6 +87,7 @@ from keep.topologies.topologies_service import TopologiesService  # noqa
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+OSS_ONLY = os.getenv("KEEP_OSS_ONLY", "true").lower() == "true"
 
 
 @router.post(
@@ -946,6 +948,7 @@ def add_comment(
     description="Create incident with AI",
     response_model=IncidentsClusteringSuggestion,
     status_code=202,
+    include_in_schema=not OSS_ONLY,
 )
 async def create_with_ai(
     alerts_fingerprints: List[str],
@@ -954,6 +957,8 @@ async def create_with_ai(
     ),
     session: Session = Depends(get_session),
 ) -> IncidentsClusteringSuggestion:
+    if OSS_ONLY:
+        raise HTTPException(status_code=404, detail="Not found")
     tenant_id = authenticated_entity.tenant_id
 
     # Get alerts data
@@ -977,6 +982,7 @@ async def create_with_ai(
     description="Commit incidents with AI and user feedback",
     response_model=List[IncidentDto],
     status_code=202,
+    include_in_schema=not OSS_ONLY,
 )
 async def commit_with_ai(
     suggestion_id: UUID,
@@ -987,6 +993,8 @@ async def commit_with_ai(
     session: Session = Depends(get_session),
     pusher_client: Pusher | None = Depends(get_pusher_client),
 ) -> List[IncidentDto]:
+    if OSS_ONLY:
+        raise HTTPException(status_code=404, detail="Not found")
     tenant_id = authenticated_entity.tenant_id
 
     # Create business logic instances
